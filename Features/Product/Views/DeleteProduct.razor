@@ -1,0 +1,54 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Product.Delete
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IProductService ProductService
+@inject CfeContext CfeContext
+
+<div>
+    <p>Você está prestes a deletar o produto <b>@Product.Name</b></p>
+    <p><b>Preço: R$</b>@Product.Price</p>
+    <p><b>Descrição: </b>@Product.Description</p>
+    <p>Produto à venda no estabelecimento <b>@CfeContext.Establishment.Name</b></p>
+    <br />
+
+    <p>Esta ação não pode ser desfeita.</p>
+    <br />
+
+    <div class="d-flex">
+        <Button Class="btn btn-danger" @onclick="Delete" Style="margin-right: 10px;">Deletar</Button>
+        <Button Class="btn btn-success" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    [Parameter]
+    public ProductEntity Product { get; set; }
+
+    private async Task Delete()
+    {
+        try
+        {
+            _ = await ProductService.DeleteAsync(Product.Id);
+
+            ToastRaiser.Notifty("Produto deletado");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível deletar o produto");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível deletar o produto");
+        }
+    }
+}

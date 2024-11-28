@@ -1,0 +1,79 @@
+﻿@page "/login"
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using System.Security.Claims
+@layout LoginLayout
+@inject IAuthenticationService AuthService
+@inject ILocalStorageService LocalStorage
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager NavManager
+
+<PageTitle>Login</PageTitle>
+
+<div class="d-flex flex-column align-items-center text-center">
+    <h3 style="color: white; font-weight: bold; margin-bottom: 50px;">Bem-vindo a nossa cafeteria gourmet!</h3>
+    <p style="color: white;">Faça o login para acessar o site</p>
+
+    <div class="rounded-2 align-self-stretch " style="padding: 20px; background-color: #ece0d1; margin-bottom: 50px;">
+        <EditForm Model="Credentials" OnValidSubmit="LoginAsync" FormName="login-form">
+            <DataAnnotationsValidator />
+
+            <label>E-mail:</label>
+            <ValidationMessage For="() => Credentials.Email" />
+            <InputText @bind-Value="Credentials.Email" class="form-control text-center"></InputText>
+            <br />
+
+            <label>Senha:</label>
+            <ValidationMessage For="() => Credentials.Password" />
+            <InputText place="password" type="password" @bind-Value="Credentials.Password" class="form-control text-center"></InputText>
+            <br />
+
+            <input type="submit" class="btn btn-success" value="Login" />
+        </EditForm>
+    </div>
+
+    <p style="color: white;">Não possui uma conta? Crie uma agora mesmo</p>
+    <Button class="btn btn-primary" @onclick='() => { NavManager.NavigateTo("/create"); }'>Criar conta</Button>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private Credentials Credentials { get; set; } = new Credentials();
+
+    private async Task LoginAsync()
+    {
+        try
+        {
+            _ = await AuthService.LoginAsync(Credentials);
+
+            var state = await AuthState.GetAuthenticationStateAsync();
+
+            string role = state.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role).Value;
+
+            RedirectUser(role);
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível se autenticar");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível se autenticar");
+        }
+    }
+
+    private void RedirectUser(string role)
+    {
+        switch (role)
+        {
+            case "suspended_account":
+                NavManager.NavigateTo("/users/suspended");
+                break;
+            case "blocked_account":
+                NavManager.NavigateTo("/commercial/suspended");
+                break;
+            default:
+                NavManager.NavigateTo("/home");
+                break;
+        }
+    }
+}

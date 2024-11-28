@@ -1,0 +1,43 @@
+﻿@page "/users/suspended"
+@attribute [Authorize(Roles = "suspended_account")]
+@using Coffee_Ecommerce.WebApp.Features.Authentication
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IUserService UserService
+@inject IAuthenticationService AuthService
+@inject NavigationManager NavManager
+@layout LoginLayout
+
+<PageTitle>Conta Suspensa</PageTitle>
+
+<div class="text-center">
+    <p>Sua conta está atualmente suspensa e agendada para exclusão</p>
+    <p>Se desejar você pode recuperá-la</p>
+
+    <div class="d-flex justify-content-center">
+        <Button Class="btn btn-primary" Style="margin-right: 10px;" @onclick="Recover">Recuperar Conta</Button>
+        <Button Class="btn btn-secondary" @onclick="RedirectToLogin">Voltar</Button>
+    </div>
+</div>
+
+@code {
+    private async Task Recover()
+    {
+        try
+        {
+            await UserService.RecoverAccountAsync();
+            await AuthService.LogoutAsync();
+            RedirectToLogin();
+
+            ToastRaiser.Notifty("Sua conta foi recuperada");
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível recuperar sua conta");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível recuperar sua conta");
+        }
+    }
+    private void RedirectToLogin() => NavManager.NavigateTo("/login");
+}

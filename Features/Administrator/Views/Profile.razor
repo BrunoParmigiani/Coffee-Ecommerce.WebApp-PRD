@@ -1,0 +1,101 @@
+﻿@page "/admins/profile"
+@attribute [Authorize(Roles = "business_owner,commercial_admin")]
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IAdministratorService AdminService
+
+<PageTitle>Dados da Conta</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div>
+    <h3>Dados da Conta</h3>
+    <hr />
+    <br />
+
+    <div>
+        <EditForm Model="Admin" FormName="readonly-admin-info" class="col-md-4">
+            <label>Nome:</label>
+            <InputText @bind-Value="Admin.Name" class="form-control" readonly></InputText>
+            <br />
+
+            <label>E-mail:</label>
+            <InputText @bind-Value="Admin.Email" class="form-control" placeholder="@("nome@domain.com")" readonly></InputText>
+            <br />
+
+            <label>CPF:</label>
+            <InputText @bind-Value="Admin.CPF" class="form-control" readonly></InputText>
+            <br />
+
+            <label>Telefone:</label>
+            <InputText @bind-Value="Admin.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX" readonly></InputText>
+        </EditForm>
+    </div>
+    <br />
+
+    <div class="d-flex">
+        <Button @onclick="ShowUpdateModal" Class="btn btn-success" style="margin-right: 10px;">Atualizar</Button>
+        <Button @onclick="ShowCredentialsModal" Class="btn btn-warning">Trocar Senha</Button>
+    </div>
+</div>
+
+@code {
+    private Modal modal = default;
+
+    private AdministratorEntity Admin { get; set; } = new AdministratorEntity();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetAdministrator();
+    }
+
+    private async Task ShowUpdateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Admin", Admin);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetAdministrator();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateForm>(title: "Atualizar dados da conta", parameters: parameters);
+    }
+
+    private async Task ShowCredentialsModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Admin", Admin);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetAdministrator();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<PasswordForm>(title: "Trocar senha", parameters: parameters);
+    }
+
+    private async Task GetAdministrator()
+    {
+        try
+        {
+            Admin = await AdminService.GetInfoAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível recuperar os dados da conta");
+
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível recuperar os dados da conta");
+        }
+    }
+}

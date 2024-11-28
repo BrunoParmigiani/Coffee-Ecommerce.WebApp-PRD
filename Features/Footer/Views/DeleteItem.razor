@@ -1,0 +1,45 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Footer.Update
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IFooterService FooterService
+
+<div>
+    <p>Você está prestes a deletar o item <b><a href="@FooterItem.Link" target="_blank">@FooterItem.Name</a></b></p>
+    <br />
+
+    <p>Esta ação não pode ser desfeita.</p>
+    <br />
+
+    <div class="d-flex">
+        <Button Class="btn btn-danger" style="margin-right: 10px;" @onclick="Delete">Deletar</Button>
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public FooterItemEntity FooterItem { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private async Task Delete()
+    {
+        try
+        {
+            var result = await FooterService.DeleteAsync(FooterItem.Id);
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível deletar o item");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível deletar o item");
+        }
+    }
+}

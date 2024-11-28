@@ -1,0 +1,290 @@
+﻿@page "/reports/{id:guid}"
+@attribute [Authorize(Roles = "commercial_admin,commercial_place,customer")]
+@using Coffee_Ecommerce.WebApp.Features.User
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Hubs
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IReportService ReportService
+@inject IUserService UserService
+@inject CfeContext CfeContext
+@inject ReportsHub ReportsHub
+
+<PageTitle>Reclamação @Id</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div class="d-flex justify-content-between flex-wrap">
+    <div style="margin-right: 50px;">
+        <h3>Informações da reclamação</h3>
+        <hr />
+        <br />
+
+        <div>
+            <Button Class="btn btn-primary" @onclick="ToggleCollapseAsync">@ToggleButtonText</Button>
+        </div>
+        <br />
+
+        <Collapse @ref="collapse" Toggle="true">
+            <EditForm Model="Report">
+                @if (Report.Status == 2)
+                {
+                    <h5>Essa reclamação foi fechada</h5>
+                    <br />
+                }
+
+                <label>Id</label>
+                <input value="@Report.Id" class="form-control" readonly />
+                <br />
+
+                <label>Pedido</label>
+                <input value="@Report.OrderId" class="form-control" readonly />
+                <br />
+
+                <label>Cliente</label>
+                <input value="@Customer.Name" class="form-control" readonly />
+                <br />
+
+                <label>Data de abertura</label>
+                <input value="@Report.OpenTime" class="form-control" readonly />
+                <br />
+
+                @if (Report.Status == 2)
+                {
+                    <label>Data de fechamento</label>
+                    <input value="@Report.CloseTime" class="form-control" readonly />
+                    <br />
+                }
+
+                <label>Problema</label>
+                <input value="@Problems.GetProblemName(Report.Problem)" class="form-control" readonly />
+                <br />
+
+                <label>Descrição:</label>
+                <textarea value="@Report.Description" class="form-control" readonly></textarea>
+                <br />
+
+                <label>Status</label>
+                <input value="@Statuses.GetStatusName(Report.Status)" class="form-control" readonly>
+            </EditForm>
+            <br />
+        </Collapse>
+
+        @if (CfeContext.Identity.Role == Roles.Establishment && Report.Status != 2)
+        {
+            <div>
+                <Button Class="btn btn-success" @onclick="async () => {await ShowUpdateModal(Report);}">Atualizar</Button>
+            </div>
+            <br />
+        }
+    </div>
+
+    @if (CfeContext.Identity.Role != Roles.Administrator)
+    {
+        <!--Chat container-->
+        <div class="bg-white flex-fill d-flex flex-column justify-content-between rounded-2" style="padding: 20px; height: 75vh;">
+            <!--Messages-->
+            <div class="d-flex flex-column" style="overflow-y: auto;">
+
+                @foreach (var message in Messages)
+                {
+                    if (message.Sender == CfeContext.Identity.UserId)
+                    {
+                        <div class="d-flex flex-column align-items-end">
+                            <p style="font-size: 75%; margin-left: auto;">@message.Time</p>
+                            <p class="form-control" style="background-color: lightblue; max-width: 350px; word-wrap: break-word;">@message.Content</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column align-items-start">
+                            <p style="font-size: 75%;">@message.Time</p>
+                            <p class="form-control" style="background-color: lightblue; max-width: 350px; word-wrap: break-word;">@message.Content</p>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!--Message field-->
+            <div class="d-flex" style="">
+                <InputText @bind-Value="MessageContent" placeholder="Digite sua mensagem aqui..." class="form-control" style="margin-right: 10px;" @onkeydown="SendMessageKey"></InputText>
+                <Button Class="btn btn-primary" Disabled="@(Report.Status == 2)" @onclick="SendMessage">Enviar</Button>
+            </div>
+        </div>
+    }
+</div>
+
+
+@code {
+    private Modal modal = default!;
+
+    private Collapse collapse = default!;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private ReportEntity Report { get; set; } = new ReportEntity();
+
+    private UserEntity Customer { get; set; } = new UserEntity();
+
+    private List<ReportMessage> Messages { get; set; } = new List<ReportMessage>();
+
+    private string? MessageContent { get; set; } = null;
+
+    private HubConnection? hubConnection { get; set; } = null;
+
+    private string? ToggleButtonText { get; set; } = "Esconder";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        ConnectToHub();
+        SetMessageListener();
+        await GetReport();
+        await GetCustomer();
+
+        if (CfeContext.Identity.Role != Roles.Administrator)
+        {
+            await GetMessages();
+        }
+    }
+
+    private void ConnectToHub() => hubConnection = ReportsHub.Connection;
+
+    private async Task ToggleCollapseAsync()
+    {
+        await collapse.ToggleAsync();
+
+        ToggleButtonText = ToggleButtonText == "Esconder" ? "Mostrar" : "Esconder";
+    }
+
+    private async Task GetReport()
+    {
+        try
+        {
+            var result = await ReportService.GetByIdAsync(Id);
+
+            Report = result;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível buscar as informações da reclamação");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível buscar as informações da reclamação");
+        }
+    }
+
+    private async Task GetCustomer()
+    {
+        try
+        {
+            var result = await UserService.GetByIdAsync(Report.UserId);
+
+            Customer = result;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível buscar as informações do cliente");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível buscar as informações do client");
+        }
+    }
+
+    private async Task GetMessages()
+    {
+        try
+        {
+            var result = await ReportService.GetMessagesAsync(Id);
+
+            Messages = result;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível buscar as mensagens da conversa");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível buscar as mensagens da conversa");
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        try
+        {
+            ReportMessage message = null;
+
+            if (CfeContext.Identity.Role == Roles.User)
+            {
+                message = new ReportMessage(Report.UserId, Report.EstablishmentId, Report.Id, MessageContent);
+            }
+            else if (CfeContext.Identity.Role == Roles.Establishment)
+            {
+                message = new ReportMessage(Report.EstablishmentId, Report.UserId, Report.Id, MessageContent);
+            }
+            else
+            {
+                ErrorRaiser.Raise("Não foi possível enviar a mensagem");
+                return;
+            }
+
+            if (hubConnection == null)
+            {
+                ErrorRaiser.Raise("Nenhuma conexão com o servidor foi estabelecida");
+                return;
+            }
+
+            await hubConnection.SendAsync("SendMessage", message);
+
+            MessageContent = null;
+        }
+        catch (ArgumentNullException)
+        {
+        }
+    }
+
+    private async Task SendMessageKey(KeyboardEventArgs kbArgs)
+    {
+        if (kbArgs.Key == "Enter")
+        {
+            await SendMessage();
+        }
+    }
+
+    private void SetMessageListener()
+    {
+        if (hubConnection == null)
+        {
+            ErrorRaiser.Raise("Nenhuma conexão com o servidor foi estabelecida");
+        }
+
+        hubConnection.Remove("ReceiveMessage");
+
+        hubConnection.On<ReportMessage>("ReceiveMessage", (message) =>
+        {
+            if (message.Report == Report.Id)
+            {
+                Messages.Add(message);
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async Task ShowUpdateModal(ReportEntity report)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Report", report);
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetReport();
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await modal.HideAsync()));
+
+        await modal.ShowAsync<UpdateReport>(title: "Atualizar reclamação", parameters: parameters);
+    }
+}

@@ -1,0 +1,18 @@
+﻿@page "/commercial/suspended"
+@attribute [Authorize(Roles = "blocked_account")]
+@inject NavigationManager NavManager
+@layout LoginLayout
+
+<PageTitle>Conta Bloqueada</PageTitle>
+
+<div class="text-center">
+    <p>Conta comercial bloqueada</p>
+    
+    <div class="d-flex justify-content-center">
+        <Button Class="btn btn-primary" @onclick="RedirectToLogin">Voltar</Button>
+    </div>
+</div>
+
+@code {
+    private void RedirectToLogin() => NavManager.NavigateTo("/login");
+}

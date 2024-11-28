@@ -1,0 +1,135 @@
+﻿@attribute [Authorize(Roles = "customer")]
+@inject IUserService UserService
+@inject IAddressService AddressService
+@inject ILocatorService LocatorService
+@inject CfeContext CfeContext
+@using Coffee_Ecommerce.WebApp.Features.Locator
+@using Coffee_Ecommerce.WebApp.Features.User
+@using Coffee_Ecommerce.WebApp.Features.User.Update
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Services.Interfaces
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@using Coffee_Ecommerce.WebApp.ThirdParty.GoogleCloud.MapsPlatform
+
+<EditForm Model="Request" OnValidSubmit="Update" FormName="update-user-form">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name"></ValidationMessage>
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>E-mail:</label>
+    <ValidationMessage For="() => Request.Email"></ValidationMessage>
+    <InputText @bind-Value="Request.Email" class="form-control" placeholder="@("Ex.: nome@domain.com")"></InputText>
+    <br />
+
+    <label>CPF</label>
+    <ValidationMessage For="() => Request.CPF"></ValidationMessage>
+    <InputText @bind-Value="Request.CPF" class="form-control"></InputText>
+    <br />
+
+    <label>Telefone:</label>
+    <ValidationMessage For="() => Request.PhoneNumber"></ValidationMessage>
+    <InputText @bind-Value="Request.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX"></InputText>
+    <br />
+
+    <label>CEP:</label>
+    <ValidationMessage For="() => Request.PostalCode"></ValidationMessage>
+    <InputText @bind-Value="Request.PostalCode" class="form-control" placeholder="XXXXX-XXX" @onfocusout="GetAddress"></InputText>
+    <br />
+
+    <label>Endereço:</label>
+    @if (GeocodeResponse != null)
+    {
+        <textarea class="form-control" readonly>@GeocodeResponse.Results[0].FormatedAddress</textarea>
+    }
+    else
+    {
+        <textarea class="form-control" readonly>@User.Street, @User.District, @User.City - @User.State</textarea>
+    }
+    <br />
+
+    <label>Complemento:</label>
+    <ValidationMessage For="() => Request.Complement"></ValidationMessage>
+    <InputText @bind-Value="Request.Complement" class="form-control" placeholder="Ex.: N° casa, apartamento, etc."></InputText>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Atualizar" />
+        <Button Class="btn-primary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public UserEntity User { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private GeocodeResponse? GeocodeResponse { get; set; } = null;
+
+    protected override void OnParametersSet()
+    {
+        Request.Name = User.Name;
+        Request.Email = User.Email;
+        Request.PostalCode = User.PostalCode;
+        Request.CPF = User.CPF;
+        Request.PhoneNumber = User.PhoneNumber;
+        Request.Complement = User.Complement;
+    }
+
+    public async Task Update()
+    {
+        try
+        {
+            _ = await UserService.UpdateAsync(Request);
+
+            ToastRaiser.Notifty("Conta atualizada");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar sua conta");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar sua conta");
+        }
+    }
+
+    private async Task GetAddress()
+    {
+        if (Request.PostalCode.Length != 9)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await AddressService.ValidatePostalCode(Request.PostalCode);
+
+            if (response == null)
+                return;
+
+            GeocodeResponse = response;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível localizar o endereço");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível localizar o endereço");
+        }
+    }
+}

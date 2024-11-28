@@ -1,0 +1,363 @@
+﻿@page "/orders/{id:guid}"
+@attribute [Authorize(Roles = "commercial_admin,commercial_place,customer")]
+@using Coffee_Ecommerce.WebApp.Features.User
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Hubs
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IOrderService OrderService
+@inject IUserService UserService
+@inject OrdersHub OrdersHub
+@inject CfeContext CfeContext
+@inject NavigationManager NavManager
+
+<PageTitle>Pedido @Id</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div class="d-flex justify-content-between flex-wrap">
+    <div style="margin-right: 50px;">
+        <h3>Informações do pedido</h3>
+        <hr />
+        <br />
+
+        <div>
+            <Button Class="btn btn-primary" @onclick="ToggleCollapseAsync">@CollapseButtonText</Button>
+        </div>
+        <br />
+
+        <Collapse @ref="collapse" Toggle="true">
+            <EditForm Model="Order">
+                @if (Order.DeniedOrder)
+                {
+                    <h5>Esse pedido foi rejeitado</h5>
+                    <br />
+                }
+
+                <label>Id</label>
+                <input value="@Order.Id" class="form-control" readonly />
+                <br />
+
+                <label>Cliente</label>
+                <input value="@Customer.Name" class="form-control" readonly />
+                <br />
+
+                <label>Endereço:</label>
+                <input value="@Customer.GetFormattedAddress()" class="form-control" readonly />
+                <br />
+
+                <label>Complemento:</label>
+                <input value="@Customer.Complement" class="form-control" readonly />
+                <br />
+
+                <label>Pedido feito às:</label>
+                <input value="@Order.OrderedAt" class="form-control" readonly />
+                <br />
+
+                @if (Order.Delivered)
+                {
+                    <label>Entregue às:</label>
+                    <input value="@Order.DeliveredAtTime" class="form-control" readonly />
+                    <br />
+                }
+
+                <label>Itens:</label>
+                <div class="form-control">
+                    @foreach (var item in Order.Items)
+                    {
+                        <p>@item</p>
+                    }
+                </div>
+                <br />
+
+                <label>Valor total:</label>
+                <input value="R$@Order.TotalValue" class="form-control" readonly />
+                <br />
+
+                <label>Tipo de pagamento:</label>
+                <input value="@(PaymentMethods.Method(Order.PaymentMethod))" class="form-control" readonly />
+                <br />
+
+                <label>Status de pagamento:</label>
+                <input value="@(Order.Paid ? "Pago" : "Não pago" )" class="form-control" readonly />
+                <br />
+
+                <label>Tempo de entrega:</label>
+                <input value="@Order.DeliveryTime" class="form-control" readonly />
+                <br />
+
+                <label>Status de entrega:</label>
+                <input value="@(Order.Delivered ? "Entregue" : "Não entregue")" class="form-control" readonly />
+                <br />
+
+                @if (Order.DeniedOrder)
+                {
+                    <label>Motivo de rejeição:</label>
+                    <textarea class="form-control" readonly>@Order.DeniedReason</textarea>
+                }
+
+                @if (Order.Rated)
+                {
+                    <label>Avaliações:</label>
+                    <div class="form-control">
+                        <p>Tempo de entrega: @Order.TimeRating / 5</p>
+                        <p>Qualidade do pedido: @Order.TimeRating / 5</p>
+
+                        @if (Order.UserComments != null)
+                        {
+                            <br />
+                            <p>@Order.UserComments</p>
+                        }
+                    </div>
+                }
+                else if (Order.Delivered && !Order.Rated && Order.OrderedAt.AddDays(2) < DateTime.Now)
+                {
+                    <p>O período de avaliação expirou</p>
+                }
+            </EditForm>
+            <br />
+        </Collapse>
+
+        @if (!Order.Delivered && CfeContext.Identity.Role == Roles.Establishment)
+        {
+            <div>
+                <Button Class="btn btn-success" @onclick="ShowUpdateModal">Atualizar</Button>
+            </div>
+            <br />
+        }
+
+        @if (Order.Delivered && CfeContext.Identity.Role == Roles.User)
+        {
+            <div class="d-flex">
+                <Button Class="btn btn-primary" Disabled="@(Order.Rated || Order.OrderedAt.AddDays(2) < DateTime.Now)" @onclick="ShowRateModal" Style="margin-right: 10px;">Avaliar</Button>
+                <Button Class="btn btn-danger" Disabled="@(!Order.Delivered)" @onclick="() => {RedirectToReport(Order.Id);}">Registrar Reclamação</Button>
+            </div>
+            <br />
+        }
+    </div>
+
+    @if (CfeContext.Identity.Role != Roles.Administrator)
+    {
+        <!--Chat container-->
+        <div class="bg-white flex-fill d-flex flex-column justify-content-between rounded-2" style="padding: 20px; height: 75vh;">
+            <!--Messages-->
+            <div class="d-flex flex-column" style="overflow-y: auto;">
+
+                @foreach (var message in Messages)
+                {
+                    if (message.Sender == CfeContext.Identity.UserId)
+                    {
+                        <div class="d-flex flex-column align-items-end">
+                            <p style="font-size: 75%; margin-left: auto;">@message.Time</p>
+                            <p class="form-control" style="background-color: lightblue; max-width: 350px; word-wrap: break-word;">@message.Content</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column align-items-start">
+                            <p style="font-size: 75%;">@message.Time</p>
+                            <p class="form-control" style="background-color: lightblue; max-width: 350px; word-wrap: break-word;">@message.Content</p>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!--Message field-->
+            <div class="d-flex" style="">
+                <InputText @bind-Value="MessageContent" placeholder="Digite sua mensagem aqui..." class="form-control" style="margin-right: 10px;" @onkeydown="SendMessageKey"></InputText>
+                <Button Class="btn btn-primary" Disabled="@(Order.Delivered || Order.DeniedOrder)" @onclick="SendMessage">Enviar</Button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    public Modal modal = default!;
+
+    public Collapse collapse = default!;
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private OrderEntity Order { get; set; } = new OrderEntity();
+
+    private UserEntity Customer { get; set; } = new UserEntity();
+
+    private List<OrderMessage> Messages { get; set; } = new List<OrderMessage>();
+
+    private string? MessageContent { get; set; } = null;
+
+    private HubConnection? hubConnection { get; set; } = null;
+
+    private string CollapseButtonText { get; set; } = "Esconder";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        ConnectToHubAsync();
+        SetMessageListener();
+        await GetOrder();
+
+        if (CfeContext.Identity.Role != Roles.Administrator && !Order.DeniedOrder)
+        {
+            await GetMessages();
+        }
+
+        await GetCustomer();
+    }
+
+    private void ConnectToHubAsync() => hubConnection = OrdersHub.Connection;
+
+    private void RedirectToReport(Guid id) => NavManager.NavigateTo($"/newreport/{id}");
+
+    private async Task ToggleCollapseAsync()
+    {
+        await collapse.ToggleAsync();
+
+        CollapseButtonText = CollapseButtonText == "Esconder" ? "Mostrar" : "Esconder";
+    }
+
+    private async Task GetOrder()
+    {
+        try
+        {
+            var result = await OrderService.GetByIdAsync(Id);
+
+            Order = result;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível buscar as informações do pedido");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível buscar as informações do pedido");
+        }
+    }
+
+    private async Task GetMessages()
+    {
+        try
+        {
+            var result = await OrderService.GetMessagesAsync(Id);
+
+            Messages = result;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível buscar as mensagens da conversa");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível buscar as mensagens da conversa");
+        }
+    }
+
+    private async Task GetCustomer()
+    {
+        try
+        {
+            var result = await UserService.GetByIdAsync(Order.UserId);
+
+            Customer = result;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível buscar as informações do cliente");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível buscar as informações do cliente");
+        }
+    }
+
+    private async Task ShowUpdateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Order", Order);
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetOrder();
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await modal.HideAsync()));
+
+        await modal.ShowAsync<UpdateOrder>(title: "Atualizar pedido", parameters: parameters);
+    }
+
+    private async Task ShowRateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Order", Order);
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetOrder();
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await modal.HideAsync()));
+
+        await modal.ShowAsync<RateOrder>(title: "Avaliar pedido", parameters: parameters);
+    }
+
+    private async Task SendMessage()
+    {
+        try
+        {
+            OrderMessage message = null;
+
+            if (CfeContext.Identity.Role == Roles.User)
+            {
+                message = new OrderMessage(Order.UserId, Order.EstablishmentId, Order.Id, MessageContent);
+            }
+            else if (CfeContext.Identity.Role == Roles.Establishment)
+            {
+                message = new OrderMessage(Order.EstablishmentId, Order.UserId, Order.Id, MessageContent);
+            }
+            else
+            {
+                ErrorRaiser.Raise("Não foi possível enviar a mensagem");
+                return;
+            }
+
+            if (hubConnection == null)
+            {
+                ErrorRaiser.Raise("Nenhuma conexão com o servidor foi estabelecida");
+                return;
+            }
+
+            await hubConnection.SendAsync("SendMessage", message);
+
+            MessageContent = null;
+        }
+        catch (ArgumentNullException)
+        {
+        }
+    }
+
+    private async Task SendMessageKey(KeyboardEventArgs kbArgs)
+    {
+        if (kbArgs.Key == "Enter")
+        {
+            await SendMessage();
+        }
+    }
+
+    private void SetMessageListener()
+    {
+        if (hubConnection == null)
+        {
+            ErrorRaiser.Raise("Nenhuma conexão com o servidor foi estabelecida");
+        }
+
+        hubConnection.Remove("ReceiveMessage");
+
+        hubConnection.On<OrderMessage>("ReceiveMessage", (message) =>
+        {
+            if (message.Order == Order.Id)
+            {
+                Messages.Add(message);
+                StateHasChanged();
+            }
+        });
+    }
+}

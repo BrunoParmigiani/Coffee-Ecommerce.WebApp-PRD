@@ -1,0 +1,173 @@
+﻿@attribute [Authorize(Roles = "business_owner")]
+@inject IAdministratorService AdminService
+@inject IEstablishmentService EstablishmentService
+@inject IAddressService AddressService
+@using Coffee_Ecommerce.WebApp.Features.Administrator
+@using Coffee_Ecommerce.WebApp.Features.Establishment.Create
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Services.Interfaces
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.ThirdParty.GoogleCloud.MapsPlatform
+
+<EditForm Model="Request" OnValidSubmit="Create" FormName="create-establishment-form">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name"></ValidationMessage>
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>E-mail:</label>
+    <ValidationMessage For="() => Request.Email"></ValidationMessage>
+    <InputText @bind-Value="Request.Email" class="form-control" placeholder="@("Ex.: nome@expcafe.com")"></InputText>
+    <br />
+
+    <label>CEP:</label>
+    <ValidationMessage For="() => Request.PostalCode"></ValidationMessage>
+    <InputText @bind-Value="Request.PostalCode" class="form-control" placeholder="XXXXX-XXX" @onfocusout="GetAddress"></InputText>
+    <br />
+
+    <label>Endereço:</label>
+    @if (GeocodeResponse != null)
+    {
+        <textarea class="form-control" readonly>@GeocodeResponse.Results[0].FormatedAddress</textarea>
+    }
+    else
+    {
+        <textarea class="form-control" readonly></textarea>
+    }
+    <br />
+
+    <label>Complemento:</label>
+    <ValidationMessage For="() => Request.Complement"></ValidationMessage>
+    <InputText @bind-Value="Request.Complement" class="form-control" placeholder="Ex.: N° casa, apartamento, etc."></InputText>
+    <br />
+
+    <label>CNPJ</label>
+    <ValidationMessage For="() => Request.CNPJ"></ValidationMessage>
+    <InputText @bind-Value="Request.CNPJ" class="form-control"></InputText>
+    <br />
+
+    <label>Telefone:</label>
+    <ValidationMessage For="() => Request.PhoneNumber"></ValidationMessage>
+    <InputText @bind-Value="Request.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX"></InputText>
+    <br />
+
+    <label>Senha:</label>
+    <ValidationMessage For="() => Request.Password"></ValidationMessage>
+    <InputText type="password" @bind-Value="Request.Password" class="form-control"></InputText>
+    <br />
+
+    <label>Administrador:</label>
+    <ValidationMessage For="() => Request.AdministratorId"></ValidationMessage>
+    <InputSelect @bind-Value="Request.AdministratorId" class="form-control">
+        @if (Admins.Any())
+        {
+            foreach (var admin in Admins)
+            {
+                <option value="@admin.Id">@admin.Name</option>
+            }
+        }
+    </InputSelect>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Criar" />
+        <Button Class="btn-primary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private CreateRequest Request { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private List<AdministratorEntity> Admins { get; set; } = new List<AdministratorEntity>();
+
+    private GeocodeResponse? GeocodeResponse { get; set; } = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        NewRequestModel();
+        await GetAdmins();
+
+        if (Admins.Any())
+        {
+            Request.AdministratorId = Admins.First().Id;
+        }
+    }
+
+    public async Task Create()
+    {
+        try
+        {
+            _ = await EstablishmentService.CreateAsync(Request);
+
+            ToastRaiser.Notifty("Conta de estabelecimento criada");
+            NewRequestModel();
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível criar o estabelecimento");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível criar o estabelecimento");
+        }
+    }
+
+    private async Task GetAddress()
+    {
+        if (Request.PostalCode.Length != 9)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await AddressService.ValidatePostalCode(Request.PostalCode);
+
+            if (response == null)
+                return;
+
+            GeocodeResponse = response;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível localizar o endereço");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível localizar o endereço");
+        }
+    }
+
+    private async Task GetAdmins()
+    {
+        try
+        {
+            Admins = await AdminService.GetAllAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os administradores");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os administradores");
+        }
+    }
+
+    private void NewRequestModel()
+    {
+        Request = new CreateRequest();
+        Request.CNPJ = CnpjGenerator.GenerateCnpj();
+    }
+}

@@ -1,0 +1,64 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Report.Update
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IReportService ReportService
+
+<EditForm Model="Request" OnValidSubmit="Update">
+    <label>Status:</label>
+    <InputSelect @bind-Value="Request.Status" class="form-control">
+        @foreach (var kvp in Statuses.GetStatuses())
+        {
+            <option value="@kvp.Key">@kvp.Value</option>
+        }
+    </InputSelect>
+    <br />
+
+    @if (Request.Status == 2)
+    {
+        <p class="text-danger">A reclamação será fechada, impossibilitando a conversa com o cliente.</p>
+    }
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Enviar" />
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter]
+    public ReportEntity Report { get; set; }
+
+    [SupplyParameterFromForm]
+    public UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Request.Id = Report.Id;
+        Request.Status = Report.Status;
+    }
+
+    private async Task Update()
+    {
+        try
+        {
+            _ = await ReportService.UpdateAsync(Request);
+
+            ToastRaiser.Notifty("Reclamação atualizada");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar a reclamação");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar a reclamação");
+        }
+    }
+}

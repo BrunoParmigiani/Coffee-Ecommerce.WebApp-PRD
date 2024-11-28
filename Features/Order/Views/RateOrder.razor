@@ -1,0 +1,75 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Order.Rate
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IOrderService OrderService
+
+<p>Pedido: @Request.Id</p>
+
+<EditForm Model="Request" OnValidSubmit="SendRequest" FormName="accept-order-form">
+    <DataAnnotationsValidator />
+
+    <label>Tempo de entrega:</label>
+    <div class="d-flex flex-row mb-3">
+        <ValidationMessage For="() => Request.TimeRating"/>
+        <RangeInput @bind-Value="Request.TimeRating" Min="1" Max="5" Step="1" />
+        <Badge Color="BadgeColor.Primary">@Request.TimeRating</Badge>
+    </div>
+    <br />
+
+    <label>Qualidade do pedido:</label>
+    <div class="d-flex flex-row mb-3">
+        <ValidationMessage For="() => Request.QualityRating"/>
+        <RangeInput @bind-Value="Request.QualityRating" Min="1" Max="5" Step="1" />
+        <Badge Color="BadgeColor.Primary">@Request.QualityRating</Badge>
+    </div>
+    <br />
+
+    <label>Comentários (opcional):</label>
+    <InputTextArea class="form-control" @bind-Value="Request.UserComments"></InputTextArea>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Enviar" />
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Cancelar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter]
+    public OrderEntity Order { get; set; }
+
+    [SupplyParameterFromForm]
+    public RateRequest Request { get; set; } = new RateRequest();
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Request.Id = Order.Id;
+    }
+
+    private async Task SendRequest()
+    {
+        try
+        {
+            _ = await OrderService.RateAsync(Request);
+
+            ToastRaiser.Notifty("Pedido avaliado");
+
+            Request = new RateRequest();
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível avaliar o pedido");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível avaliar o pedido");
+        }
+    }
+}

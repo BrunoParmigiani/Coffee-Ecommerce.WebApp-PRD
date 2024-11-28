@@ -1,0 +1,152 @@
+﻿@page "/users/profile"
+@attribute [Authorize(Roles = "customer")]
+@using Coffee_Ecommerce.WebApp.Features.Authentication
+@using Coffee_Ecommerce.WebApp.Features.User
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IUserService UserService
+@inject IAuthenticationService AuthService
+
+<PageTitle>Dados da Conta</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+<Modal @ref="modalwarning" UseStaticBackdrop="true" OnHiding="Logout">
+    <HeaderTemplate>Troca de endereço</HeaderTemplate>
+    <BodyTemplate>
+        <p>Parece que você trocou de endereço. Para que possamos localizar um de nossos estabelecimentos perto de você, você terá que fazer o login novamente.</p>
+    </BodyTemplate>
+</Modal>
+
+<div>
+    <h3>Dados da Conta</h3>
+    <hr />
+    <br />
+
+    <div>
+        <form class="col-md-5">
+            <label>Nome:</label>
+            <InputText @bind-Value="User.Name" class="form-control" readonly></InputText>
+            <br />
+
+            <label>E-mail:</label>
+            <InputText @bind-Value="User.Email" class="form-control" readonly></InputText>
+            <br />
+
+            <label>CPF:</label>
+            <InputText @bind-Value="User.CPF" class="form-control" readonly></InputText>
+            <br />
+
+            <label>Telefone:</label>
+            <InputText @bind-Value="User.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX" readonly></InputText>
+            <br />
+
+            <label>CEP:</label>
+            <InputText @bind-Value="User.PostalCode" class="form-control" readonly></InputText>
+            <br />
+
+            <label>Endereço:</label>
+            <textarea class="form-control" readonly>
+                @User.Street, @User.District, @User.City - @User.State
+            </textarea>
+            <br />
+
+            <label>Complemento:</label>
+            <InputText @bind-Value="User.Complement" class="form-control"></InputText>
+        </form>
+    </div>
+    <br />
+
+    <div class="d-flex">
+        <Button @onclick="ShowUpdateModal" Class="btn btn-success" style="margin-right: 10px;">Atualizar</Button>
+        <Button @onclick="ShowCredentialsModal" Class="btn btn-warning" style="margin-right: 10px;">Trocar Senha</Button>
+        <Button @onclick="ShowDeleteModal" Class="btn btn-danger">Excluir Conta</Button>
+    </div>
+</div>
+
+@code {
+    private Modal modal = default;
+
+    private Modal modalwarning = default;
+
+    private UserEntity User { get; set; } = new UserEntity();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetUser();
+    }
+
+    private async Task ShowUpdateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("User", User);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            string postalCode = User.PostalCode;
+            await GetUser();
+
+            if (postalCode != User.PostalCode)
+            {
+                await modalwarning.ShowAsync();
+            }
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateForm>(title: "Atualizar dados da conta", parameters: parameters);
+    }
+
+    private async Task ShowCredentialsModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("User", User);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetUser();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<PasswordForm>(title: "Trocar senha", parameters: parameters);
+    }
+
+    private async Task ShowDeleteModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetUser();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<DeleteModal>(title: "Excluir conta", parameters: parameters);
+    }
+
+    private async Task GetUser()
+    {
+        try
+        {
+            User = await UserService.GetInfoAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível recuperar os dados da conta");
+
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível recuperar os dados da conta");
+        }
+    }
+
+    private async Task Logout() => await AuthService.LogoutAsync();
+}
+

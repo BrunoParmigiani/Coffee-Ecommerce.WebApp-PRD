@@ -1,0 +1,130 @@
+﻿@page "/orders/new"
+@attribute [Authorize(Roles = "commercial_place")]
+@using Coffee_Ecommerce.WebApp.Features.NewOrder
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Hubs
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@using Coffee_Ecommerce.WebApp.Features.Order.Create
+@inject NavigationManager NavManager
+@inject ReceivedOrders ReceivedOrders
+@inject INewOrderService NewOrderService
+@inject OrdersHub OrdersHub
+@inject IConfiguration Config
+@inject ILocalStorageService LocalStorage
+
+<PageTitle>Novos Pedidos</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div>
+    <h3>Novos Pedidos</h3>
+    <hr />
+    <br />
+
+    <div class="w-75">
+        @foreach (var order in ReceivedOrders.NewOrders)
+        {
+            <Card>
+                <CardHeader Style="background-color: #967259; color: white;">
+                    <h4>Pedido: @order.Id</h4>
+                </CardHeader>
+
+                <CardBody Class="bg-white">
+                    <p>Pedido: @order.Id</p>
+                    <p>Cliente: @order.UserName</p>
+                    <p>Endereço: @order.UserAddress</p>
+                    <p>Complemento: @order.UserComplement</p>
+                    <br />
+
+                    <h5 class="d-flex bg-dark" style="padding-left: 10px; color: white; font-weight: bold;">Itens</h5>
+                    <br />
+
+                    @foreach (var item in order.Items)
+                    {
+                        <b class="d-flex" style="padding-left: 10px; background-color: #967259; color: white;">@item.Name</b>
+                        <br />
+                        <p>R$ @item.Price</p>
+                        <p>Quantidade: @item.Quantity</p>
+                        <p>Subtotal: R$@(item.Price * item.Quantity)</p>
+                        <br />
+                    }
+                    <hr />
+
+                    <p>Pagamento: @PaymentMethods.Method(order.PaymentMethod)</p>
+                    <p><b>Total: </b>R$@order.Items.Sum(i => i.Price * i.Quantity)</p>
+                    <br />
+
+                    <div>
+                        <Button Class="btn btn-success" Style="margin-right: 10px;" @onclick="async () => await ShowAcceptModal(order)">Aceitar</Button>
+                        <Button Class="btn btn-danger" @onclick="async () => await ShowDeclineModal(order)">Recusar</Button>
+                    </div>
+                </CardBody>
+            </Card>
+            <br />
+        }
+    </div>
+</div>
+
+@code {
+    public Modal modal = default;
+
+    private HubConnection? hubConnection { get; set; } = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ConnectToHub();
+        SetDataListener();
+
+        await ReceivedOrders.GetOrders();
+    }
+
+    private void ConnectToHub() => hubConnection = OrdersHub.Connection;
+
+    private void SetDataListener()
+    {
+        if (hubConnection == null)
+        {
+            ErrorRaiser.Raise("Nenhuma conexão com o servidor foi estabelecida");
+            return;
+        }
+
+        // Removes a listener if it already exists
+        hubConnection.Remove("ReceiveOrder");
+
+        hubConnection.On<CreateRequest>("ReceiveOrder", async (order) =>
+        {
+            await ReceivedOrders.AddOrder(order);
+            ToastRaiser.Notifty("Novo pedido recebido");
+            StateHasChanged();
+        });
+    }
+
+    private async Task ShowAcceptModal(CreateRequest newOrder)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("ReceivedOrder", newOrder);
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await ReceivedOrders.RemoveOrder(newOrder);
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await modal.HideAsync()));
+        
+        await modal.ShowAsync<AcceptOrder>(title: "Aceitar pedido", parameters: parameters);
+    }
+
+    private async Task ShowDeclineModal(CreateRequest newOrder)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("ReceivedOrder", newOrder);
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await ReceivedOrders.RemoveOrder(newOrder);
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await modal.HideAsync()));
+        
+        await modal.ShowAsync<DeclineOrder>(title: "Rejeitar pedido", parameters: parameters);
+    }
+}

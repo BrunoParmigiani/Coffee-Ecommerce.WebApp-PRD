@@ -1,0 +1,109 @@
+﻿@attribute [Authorize(Roles = "business_owner")]
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IAdministratorService AdminService
+
+<div>
+    <p>Você está prestes a excluir o administrador <b>@Admin.Name</b>.</p>
+    <p>O bloqueio da conta é necessário antes do processo de exclusão. Contas bloqueadas podem ser posteriormente desbloqueadas.</p>
+    <p>A conta somente é excluída 30 dias após a solicitação. A exclusão pode ser posteriormente cancelada desbloqueando a conta</p>
+    <p class="text-danger">Após a exclusão, a conta não pode ser recuperada</p>
+    
+    <hr />
+    <p><b>Nome: </b>@Admin.Name</p>
+    <p><b>E-mail: </b>@Admin.Email</p>
+    <p><b>CPF: </b>@Admin.CPF</p>
+    <p><b>Telefone: </b>@Admin.PhoneNumber</p>
+    <p><b>Tipo: </b>@Admin.Role</p>
+    <hr />
+    <br />
+
+    <div class="d-flex">
+        <Button Color="@((ButtonColor)Color)" @onclick="Block" Style="margin-right: 10px;">@ButtonState</Button>
+        <Button Color="ButtonColor.Danger" @onclick="Delete" Style="margin-right: 10px;" Disabled="@(!BlockedAdmin)">Excluir</Button>
+        <Button Color="ButtonColor.Success" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public AdministratorEntity Admin { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    private bool BlockedAdmin { get; set; } = false;
+
+    private string ButtonState { get; set; } = "Bloquear";
+
+    private int Color { get; set; } = 4;
+
+    protected override void OnParametersSet()
+    {
+        ChangeButtonState();
+    }
+
+    private async Task Delete()
+    {
+        try
+        {
+            _ = await AdminService.DeleteAsync(Admin.Id);
+
+            ToastRaiser.Notifty("Conta agendada para exclusão");
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível agendar a exclusão do administrador");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível agendar a exclusão do administrador");
+        }
+    }
+
+    private async Task Block()
+    {
+        try
+        {
+            var result = await AdminService.BlockAsync(Admin.Id);
+
+            if (result.Item2 == "Account blocked")
+            {
+                ToastRaiser.Notifty("Conta bloqueada");
+            }
+            else if (result.Item2 == "Account unblocked")
+            {
+                ToastRaiser.Notifty("Conta desbloqueada");
+            }
+
+            await ChangeModalState();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível bloquear o administrador");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível bloquear o administrador");
+        }
+    }
+
+    private async Task GetAdmin()
+    {
+        Admin = await AdminService.GetByIdAsync(Admin.Id);
+    }
+
+    private void ChangeButtonState()
+    {
+        bool blockedAccount = Admin.Role == "blocked_account" ? true : false;
+        ButtonState = blockedAccount ? "Desbloquear" : "Bloquear";
+        Color = blockedAccount ? 3 : 4;
+        BlockedAdmin = blockedAccount;
+    }
+
+    private async Task ChangeModalState()
+    {
+        await GetAdmin();
+        ChangeButtonState();
+    }
+}

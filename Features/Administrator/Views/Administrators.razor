@@ -1,0 +1,121 @@
+﻿@page "/admins"
+@attribute [Authorize(Roles = "business_owner")]
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IAdministratorService AdminService
+@inject NavigationManager NavManager
+
+<PageTitle>Administradores</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div>
+    <h3>Administradores</h3>
+    <hr />
+    <br />
+
+    <div>
+        <Button Class="btn btn-success" @onclick="ShowCreateModal">Novo Administrador</Button>
+    </div>
+    <br />
+
+    <div class="table-responsive d-flex flex-column align-items-center rounded-2 bg-dark" style="color: white;">
+        <table class="table table-hover table-light table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>CPF</th>
+                    <th>Telefone</th>
+                    <th>Tipo</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var admin in AdministratorsList)
+                {
+                    <tr>
+                        <td>@admin.Name</td>
+                        <td>@admin.Email</td>
+                        <td>@admin.CPF</td>
+                        <td>@admin.PhoneNumber</td>
+                        <td>@admin.Role</td>
+                        <td><Button @onclick="async () => {await ShowUpdateModal(admin);}" Class="btn btn-warning">Atualizar</Button></td>
+                        <td><Button @onclick="async () => {await ShowDeleteModal(admin);}" Class=" btn btn-danger">Exclusão</Button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private Modal modal = default;
+
+    private List<AdministratorEntity> AdministratorsList { get; set; } = new List<AdministratorEntity>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetAdministrators();
+    }
+
+    private async Task ShowCreateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetAdministrators();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<CreateForm>(title: $"Criar administrador", parameters: parameters);
+    }
+
+    private async Task ShowUpdateModal(AdministratorEntity admin)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Admin", admin);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetAdministrators();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateForm>(title: $"Atualizar administrador {admin.Name}", parameters: parameters);
+    }
+
+    private async Task ShowDeleteModal(AdministratorEntity admin)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Admin", admin);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<DeleteAdmin>(title: $"Deletar conta de administrador", parameters: parameters);
+    }
+
+    private async Task GetAdministrators()
+    {
+        try
+        {
+            AdministratorsList = await AdminService.GetAllAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os administradores");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise("Não foi possível listar os administradores");
+        }
+    }
+}

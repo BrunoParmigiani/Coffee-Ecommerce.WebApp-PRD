@@ -1,0 +1,139 @@
+﻿@attribute [Authorize(Roles = "business_owner")]
+@using Coffee_Ecommerce.WebApp.Features.Administrator.Create
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IAdministratorService AdminService
+@inject IEstablishmentService EstablishmentService
+
+<EditForm Model="Request" OnValidSubmit="Create" FormName="create-admin-form">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name" />
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>E-mail:</label>
+    <ValidationMessage For="() => Request.Email" />
+    <InputText @bind-Value="Request.Email" class="form-control" placeholder="@("Ex.: nome@expcafe.com")"></InputText>
+    <br />
+
+    <label>CPF:</label>
+    <ValidationMessage For="() => Request.CPF" />
+    <InputText @bind-Value="Request.CPF" class="form-control"></InputText>
+    <br />
+
+    <label>Telefone:</label>
+    <ValidationMessage For="() => Request.PhoneNumber" />
+    <InputText @bind-Value="Request.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX"></InputText>
+    <br />
+
+    <label>Tipo de conta:</label>
+    <ValidationMessage For="() => Request.Role" />
+    <InputSelect @bind-Value="Request.Role" class="form-control">
+        <option value="commercial_admin">Administrador</option>
+        <option value="business_owner">Dono</option>
+    </InputSelect>
+    <br />
+
+    @if (Request.Role == Roles.Administrator)
+    {
+        <label>Estabelecimento:</label>
+        <ValidationMessage For="() => Request.EstablishmentId"></ValidationMessage>
+        <InputSelect @bind-Value="Request.EstablishmentId" class="form-control">
+            <option value="@Guid.Empty">Nenhum</option>
+            @if (Establishments.Any())
+            {
+                foreach (var establishment in Establishments)
+                {
+                    <option value="@establishment.Id">@establishment.Name</option>
+                }
+            }
+        </InputSelect>
+        <br />
+    }
+
+    <label>Senha:</label>
+    <ValidationMessage For="() => Request.Password" />
+    <InputText type="password" @bind-Value="Request.Password" class="form-control"></InputText>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Criar" />
+        <Button Class="btn-primary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private CreateRequest Request { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private List<EstablishmentEntity> Establishments { get; set; } = new List<EstablishmentEntity>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        NewRequestModel();
+        await GetEstablishments();
+
+        if (Establishments.Any())
+        {
+            Request.EstablishmentId = Establishments.First().Id;
+        }
+        else
+        {
+            Request.EstablishmentId = Guid.Empty;
+        }
+    }
+
+    private async Task Create()
+    {
+        try
+        {
+            _ = await AdminService.CreateAsync(Request);
+
+            ToastRaiser.Notifty("Conta de administrador criada");
+            NewRequestModel();
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível criar o administrador");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível criar o administrador");
+        }
+    }
+
+    private async Task GetEstablishments()
+    {
+        try
+        {
+            Establishments = await EstablishmentService.GetAllAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os administradores");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os administradores");
+        }
+    }
+
+    private void NewRequestModel()
+    {
+        Request = new CreateRequest();
+        Request.CPF = CpfGenerator.GenerateCpf();
+        Request.Role = "commercial_admin";
+    }
+}

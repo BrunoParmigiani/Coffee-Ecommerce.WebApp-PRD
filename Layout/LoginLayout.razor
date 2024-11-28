@@ -1,0 +1,33 @@
+﻿@inherits LayoutComponentBase
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthState
+
+<div class="bb-page" style="background-color: #967259;">
+    <main>
+        <!--<div class="bb-top-row px-4 d-flex justify-content-end">
+            <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
+        </div>-->
+
+        <article class="content px-4">
+            <div class="py-2 w-100 d-flex justify-content-center">@Body</div>
+        </article>
+    </main>
+
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+
+        if (state.User.Identity.IsAuthenticated)
+        {
+            RedirectToHome();
+        }
+    }
+
+    private void RedirectToHome()
+    {
+        NavManager.NavigateTo("/home");
+    }
+}

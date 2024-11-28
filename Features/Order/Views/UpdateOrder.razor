@@ -1,0 +1,91 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Order.Update
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IOrderService OrderService
+
+<p>Pedido: @Request.Id</p>
+
+<EditForm Model="Request" OnValidSubmit="Update" FormName="accept-order-form">
+    <DataAnnotationsValidator />
+
+    <label>Pedido pago:</label>
+    <InputSelect class="form-control" @bind-Value="Request.Paid">
+        <option value="false">Não</option>
+        <option value="true">Sim</option>
+    </InputSelect>
+    <br />
+
+    <label>Pedido entregue:</label>
+    <InputSelect class="form-control" @bind-Value="Request.Delivered">
+        <option value="false">Não</option>
+        <option value="true">Sim</option>
+    </InputSelect>
+    <br />
+
+    <label>Unidade de Tempo:</label>
+    <InputSelect class="form-control" @bind-Value="TimeUnit">
+        <option value="60">Minutos</option>
+        <option value="3600">Horas</option>
+    </InputSelect>
+    <br />
+
+    <label>Tempo de entrega:</label>
+    <ValidationMessage For="() => Request.DeliveryTime"></ValidationMessage>
+    <NumberInput Class="form-control" @bind-Value="Request.DeliveryTime"></NumberInput>
+    <br />
+
+    @if (Request.Delivered)
+    {
+        <p class="text-danger">O pedido será fechado se for salvo como entregue, impossibilitando sua edição e conversa com o cliente.</p>
+    }
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Enviar" />
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter]
+    public OrderEntity Order { get; set; }
+
+    [SupplyParameterFromForm]
+    public UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    private int TimeUnit { get; set; } = 60;
+
+    protected override void OnParametersSet()
+    {
+        Request.Id = Order.Id;
+        Request.Paid = Order.Paid;
+        Request.Delivered = Order.Delivered;
+        Request.DeliveryTime = Order.DeliveryTime.Seconds;
+    }
+
+    private async Task Update()
+    {
+        try
+        {
+            Request.DeliveryTime = Request.DeliveryTime * TimeUnit;
+
+            _ = await OrderService.UpdateAsync(Request);
+
+            ToastRaiser.Notifty("Pedido atualizado");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar o pedido");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar o pedido");
+        }
+    }
+}

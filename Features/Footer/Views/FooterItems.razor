@@ -1,0 +1,117 @@
+﻿@page "/footeritems"
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@attribute [Authorize(Roles = "business_owner")]
+@inject IFooterService FooterService
+
+<PageTitle>Itens de Rodapé</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true"/>
+
+<div>
+    <h3>Itens de Rodapé</h3>
+    <hr />
+    <br />
+
+    <div>
+        <Button Class="btn btn-success" @onclick="ShowCreateModal">Criar Item</Button>
+    </div>
+    <br />
+
+    <div class="table-responsive d-flex flex-column align-items-center rounded-2 bg-dark" style="color: white;">
+        <table class="table table-hover table-light table-striped">
+            <thead class="table-dark">
+                <th>Item</th>
+            </thead>
+
+            <tbody>
+                @foreach (var item in FooterItemsList)
+                {
+                    <tr>
+                        <td><a href="@item.Link" target="_blank">@item.Name</a></td>
+                        <td><Button Class="btn btn-warning" @onclick="async () => {await ShowUpdateModal(item);}">Atualizar</Button></td>
+                        <td><Button Class="btn btn-danger" @onclick="async () => {await ShowDeleteModal(item);}">Deletar</Button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private Modal modal = default!;
+
+    private List<FooterItemEntity> FooterItemsList { get; set; } = new List<FooterItemEntity>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetItems();
+    }
+
+    private async Task ShowCreateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetItems();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<CreateItem>(title: "Criar item", parameters: parameters);
+    }
+
+    private async Task ShowUpdateModal(FooterItemEntity item)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("FooterItem", item);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetItems();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateItem>(title: $"Atualizar item {item.Name}", parameters: parameters);
+    }
+
+    private async Task ShowDeleteModal(FooterItemEntity item)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("FooterItem", item);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetItems();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<DeleteItem>(title: $"Deletar item {item.Name}", parameters: parameters);
+    }
+
+    private async Task GetItems()
+    {
+        try
+        {
+            var result = await FooterService.GetAllAsync();
+
+            FooterItemsList = result;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os itens de rodapé");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os itens de rodapé");
+        }
+    }
+}

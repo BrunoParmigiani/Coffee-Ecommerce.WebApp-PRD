@@ -1,0 +1,132 @@
+﻿@page "/announcements"
+@attribute [Authorize(Roles = "business_owner,commercial_admin,commercial_place,customer")]
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IAnnouncementService AnnouncementService
+@inject CfeContext CfeContext
+
+<PageTitle>Anúncios</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<h3>Anúncios</h3>
+<hr />
+<br />
+
+<div>
+    @if (CfeContext.Identity.Role != Roles.User)
+    {
+        <div>
+            <Button Class="btn btn-success" @onclick="ShowCreateModal">Novo anúncio</Button>
+        </div>
+        <br />
+    }
+
+    <div class="w-75">
+        @foreach (var announcement in AnnouncementsList)
+        {
+            <Card>
+                <CardHeader Style="background-color: #967259; color: white;">
+                    <h4 style="word-wrap: break-word;">@announcement.Name</h4>
+                </CardHeader>
+
+                <CardBody Class="bg-white">
+                    <p style="word-wrap: break-word;">@announcement.Message</p>
+                    
+                    @if (CfeContext.Identity.UserId == announcement.CreatorId)
+                    {
+                        <br />
+                        <div class="d-flex">
+                            <Button Class="btn btn-warning" @onclick="async () => {await ShowUpdateModal(announcement);}" Style="margin-right: 10px;">Atualizar</Button>
+                            <Button Class="btn btn-danger" @onclick="async () => {await ShowDeleteModal(announcement);}">Deletar</Button>
+                        </div>
+                    }
+                </CardBody>
+            </Card>
+            <br />
+        }
+    </div>
+</div>
+
+@code {
+    private Modal modal = default!;
+
+    private List<AnnouncementEntity> AnnouncementsList { get; set; } = new List<AnnouncementEntity>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetAnnouncements();
+    }
+
+    private async Task GetAnnouncements()
+    {
+        try
+        {
+            var result = await AnnouncementService.GetByRoleAsync();
+
+            if (result is not null)
+            {
+                AnnouncementsList = result;
+            }
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os pedidos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os pedidos");
+        }
+    }
+
+    private async Task ShowCreateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetAnnouncements();
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<CreateAnnouncement>(title: "Criar anúncio", parameters: parameters);
+    }
+
+    private async Task ShowUpdateModal(AnnouncementEntity announcement)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Announcement", announcement);
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetAnnouncements();
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateAnnouncement>(title: $"Atualizar anúncio {announcement.Name}", parameters: parameters);
+    }
+
+    private async Task ShowDeleteModal(AnnouncementEntity announcement)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Announcement", announcement);
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetAnnouncements();
+            await modal.HideAsync();
+        }));
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<DeleteAnnouncement>(title: $"Deletar anúncio {announcement.Name}", parameters: parameters);
+    }
+}

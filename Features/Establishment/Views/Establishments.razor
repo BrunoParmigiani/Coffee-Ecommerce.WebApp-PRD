@@ -1,0 +1,128 @@
+﻿@page "/establishments"
+@attribute [Authorize(Roles = "business_owner")]
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IEstablishmentService EstablishmentService
+@inject NavigationManager NavManager
+
+<PageTitle>Estabelecimentos</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div>
+    <h3>Estabelecimentos</h3>
+    <hr />
+    <br />
+
+    <div>
+        <Button Class="btn btn-success" @onclick="ShowCreateModal">Novo Estabelecimento</Button>
+    </div>
+    <br />
+
+    <div class="table-responsive d-flex flex-column align-items-center rounded-2 bg-dark" style="color: white;">
+        <table class="table table-hover table-light table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>CNPJ</th>
+                    <th>Telefone</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var establishment in EstablishmentsList)
+                {
+                    <tr>
+                        <td>@establishment.Name</td>
+                        <td>@establishment.Email</td>
+                        <td>@establishment.CNPJ</td>
+                        <td>@establishment.PhoneNumber</td>
+                        <td><Button @onclick="async () => {await ShowInfoModal(establishment);}" Class="btn btn-primary">Visualizar</Button></td>
+                        <td><Button @onclick="async () => {await ShowUpdateModal(establishment);}" Class="btn btn-warning">Atualizar</Button></td>
+                        <td><Button @onclick="async () => {await ShowDeleteModal(establishment);}" Class=" btn btn-danger">Exclusão</Button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private Modal modal = default;
+
+    private List<EstablishmentEntity> EstablishmentsList { get; set; } = new List<EstablishmentEntity>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetEstablishments();
+    }
+
+    private async Task ShowCreateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetEstablishments();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<CreateForm>(title: $"Criar estabelecimento", parameters: parameters);
+    }
+
+    private async Task ShowInfoModal(EstablishmentEntity establishment)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Establishment", establishment);
+
+        await modal.ShowAsync<EstablishmentInfo>(title: $"Detalhes", parameters: parameters);
+    }
+
+    private async Task ShowUpdateModal(EstablishmentEntity establishment)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Establishment", establishment);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetEstablishments();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateForm>(title: $"Atualizar estabelecimento {establishment.Name}", parameters: parameters);
+    }
+
+    private async Task ShowDeleteModal(EstablishmentEntity establishment)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Establishment", establishment);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<DeleteEstablishment>(title: $"Deletar conta de estabelecimento", parameters: parameters);
+    }
+
+    private async Task GetEstablishments()
+    {
+        try
+        {
+            EstablishmentsList = await EstablishmentService.GetAllAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os estabelecimentos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise("Não foi possível listar os estabelecimentos");
+        }
+    }
+}

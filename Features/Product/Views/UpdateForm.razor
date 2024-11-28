@@ -1,0 +1,72 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Product.Update
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IProductService ProductService
+
+<EditForm Model="Request" OnValidSubmit="Update" FormName="update-product-form">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name" />
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>Preço:</label>
+    <ValidationMessage For="() => Request.Price" />
+    <CurrencyInput @bind-Value="Request.Price" HideCurrencySymbol="true" TValue="float" class="form-control"></CurrencyInput>
+    <br />
+
+    <label>Descrição:</label>
+    <ValidationMessage For="() => Request.Description" />
+    <InputTextArea @bind-Value="Request.Description" class="form-control"></InputTextArea>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Atualizar" />
+        <Button Class="btn-primary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    [Parameter]
+    public ProductEntity Product { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Request.Id = Product.Id;
+        Request.Name = Product.Name;
+        Request.Price = Product.Price;
+        Request.Description = Product.Description;
+        Request.EstablishmentId = Product.EstablishmentId;
+    }
+
+    private async Task Update()
+    {
+        try
+        {
+            _ = await ProductService.UpdateAsync(Request);
+
+            ToastRaiser.Notifty("Produto atualizado");
+            
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar o produto");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar o produto");
+        }
+    }
+}

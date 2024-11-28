@@ -1,0 +1,50 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Authentication
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@attribute [Authorize(Roles = "customer")]
+@inject IUserService UserService
+@inject IAuthenticationService AuthService
+@inject NavigationManager NavManager
+
+<div>
+    <p class="text-danger">Tem certeza que deseja deletar sua conta? Essa ação não pode ser desfeita</p>
+    <br />
+
+    <p>Sua conta será bloqueada por 30 dias antes de ser excluída.</p>
+    <p>Caso mude de ideia nesse meio-tempo você só precisa fazer login na sua conta para cancelar a exclusão.</p>
+    <br />
+
+    <div class="d-flex">
+        <Button @onclick="CloseCallback" Class="btn btn-primary" Style="margin-right: 10px;">Cancelar</Button>
+        <Button @onclick="Block" Class="btn btn-danger">Agendar Exclusão</Button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private async Task Block()
+    {
+        try
+        {
+            _ = await UserService.DeleteAsync();
+
+            ToastRaiser.Notifty("Exclusão agendada");
+
+            await AuthService.LogoutAsync();
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível agendar a conta para exclusão");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível agendar a conta para exclusão");
+        }
+    }
+}

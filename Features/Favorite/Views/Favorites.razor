@@ -1,0 +1,126 @@
+﻿@page "/favorites"
+@attribute [Authorize(Roles = "customer")]
+@using Coffee_Ecommerce.WebApp.Features.Cart
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Favorite.GetByUser
+@using Coffee_Ecommerce.WebApp.Features.Product
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IFavoriteService FavoriteService
+@inject ICartService CartService
+@inject CfeContext CfeContext
+
+<PageTitle>Favoritos</PageTitle>
+
+
+<div>
+    <h3>Favoritos</h3>
+    <hr />
+    <br />
+
+    <div class="w-75">
+        @foreach (var wrapper in FavoritesList)
+        {
+            <Card>
+                <CardHeader Style="background-color: #967259; color: white;">
+                    <h4>@wrapper.Favorite.Product.Name</h4>
+                </CardHeader>
+
+                <CardBody Class="bg-white">
+                    <p>R$ @wrapper.Favorite.Product.Price</p>
+                    <p>@wrapper.Favorite.Product.Description</p>
+                    <br />
+
+                    <p>Quantidade:</p>
+                    <div class="d-flex" style="margin-bottom: 5px;">
+                        <p class="btn btn-primary btn-sm" style="margin-right: 10px;" @onclick="wrapper.DecrementQuantity">-</p>
+                        <p style="margin-right: 10px;">@wrapper.Quantity</p>
+                        <p class="btn btn-primary btn-sm" @onclick="wrapper.IncrementQuantity">+</p>
+                    </div>
+
+                    <div class="d-flex">
+                        <Button Class="btn btn-success" @onclick="async () => {await AddToCart(wrapper.Favorite.Product, wrapper.Quantity);}" Style="margin-right: 10px;"><Icon Name="IconName.CartFill"></Icon></Button>
+                        <Button Class="btn btn-danger" @onclick="async () => {await RemoveFromFavorite(wrapper.Favorite.FavoriteId);}"><Icon Name="IconName.TrashFill"></Icon></Button>
+                    </div>
+                </CardBody>
+            </Card>
+            <br />
+        }
+    </div>
+</div>
+
+@code {
+    private List<FavoriteWrapper> FavoritesList { get; set; } = new List<FavoriteWrapper>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetFavorites();
+    }
+
+    private async Task GetFavorites()
+    {
+        try
+        {
+            (await FavoriteService.GetByUserAsync())
+                .ForEach(product =>
+                {
+                    if (product.Product.EstablishmentId == CfeContext.Establishment.Id)
+                    {
+                        FavoritesList.Add(new FavoriteWrapper(product, 1));
+                    }
+                });
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar seus favoritos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar seus favoritos");
+        }
+    }
+
+    private async Task AddToCart(ProductEntity product, int quantity) => await CartService.AddItem(product, quantity);
+
+    private async Task RemoveFromFavorite(Guid favoriteId)
+    {
+        try
+        {
+            await FavoriteService.DeleteAsync(favoriteId);
+
+            FavoritesList.RemoveAll(wrapper => wrapper.Favorite.FavoriteId == favoriteId);
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível remover favorito");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível remover favorito");
+        }
+    }
+
+    private class FavoriteWrapper
+    {
+        public FavoriteData Favorite { get; private set; }
+        public int Quantity { get; private set; }
+
+        public FavoriteWrapper(FavoriteData favorite, int quantity)
+        {
+            Favorite = favorite;
+            Quantity = quantity;
+        }
+
+        public void IncrementQuantity() => Quantity++;
+
+        public void DecrementQuantity()
+        {
+            Quantity--;
+
+            if (Quantity < 1)
+            {
+                Quantity = 1;
+            }
+        }
+    }
+}

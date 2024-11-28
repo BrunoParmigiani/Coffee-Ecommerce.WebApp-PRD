@@ -1,0 +1,169 @@
+﻿@page "/orders"
+@attribute [Authorize(Roles = "commercial_admin,commercial_place,customer")]
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Order.GetPage
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using System.Security.Claims
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IOrderService OrderService
+@inject NavigationManager NavManager
+@inject CfeContext CfeContext
+
+<PageTitle>Pedidos</PageTitle>
+
+<div>
+    <h3>Pedidos</h3>
+    <hr />
+    <br />
+
+    <EditForm Model="PageRequest" FormName="page-form">
+        <DataAnnotationsValidator />
+        <h5>Filtragem</h5>
+        <br />
+
+        <div class="d-flex">
+            <div style="margin-right: 50px;">
+                <label>Data</label>
+                <DateInput @bind-Value="PageRequest.Date" class="form-control"></DateInput>
+            </div>
+
+            <div>
+                <label>Valor do pedido</label>
+                <InputNumber TValue="float" @bind-Value="PageRequest.TotalValue" class="form-control"></InputNumber>
+            </div>
+        </div>
+        <br />
+
+        <h5>Ordenação</h5>
+        <br />
+        <InputSelect @bind-Value="PageRequest.OrderBy" class="form-control">
+            <option value="value_ascending">Valor crescente</option>
+            <option value="value_descending">Valor decrescente</option>
+            <option value="date_ascending">Data crescente</option>
+            <option value="date_descending">Data decrescente</option>
+        </InputSelect>
+    </EditForm>
+    <br />
+
+    <div class="d-flex justify-content-between">
+        <div class="d-flex">
+            <Button Class="btn btn-success" Style="margin-right: 10px;" @onclick="GetOrders">Buscar</Button>
+            <Button Class="btn btn-primary" @onclick="NewRequest">Limpar Filtros</Button>
+        </div>
+
+        <div class="d-flex align-items-center">
+            <p style="margin-right: 10px;">Itens:</p>
+            <InputNumber TValue="int" @bind-Value="ItemsPerPage" class="form-control"></InputNumber>
+        </div>
+    </div>
+    <br />
+
+    <div class="table-responsive d-flex flex-column align-items-center rounded-2 bg-dark" style="color: white;">
+        <table class="table table-hover table-light table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Pedido</th>
+                    <th>Data</th>
+                    <th>Valor</th>
+                    <th>Pago</th>
+                    <th>Entregue</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var order in OrdersList)
+                {
+                    <tr @onclick="() => {RedirectToOrder(order.Id);}">
+                        <td>@StringService.Cut(order.Id.ToString(), 8)</td>
+                        <td>@order.OrderedAt</td>
+                        <td>R$ @order.TotalValue</td>
+                        <td>@(order.Paid ? "Sim" : "Não")</td>
+                        <td>@(order.Delivered ? "Sim" : "Não")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <br />
+
+        <div class="d-flex">
+            <p class="btn btn-sm bg-white" style="margin-right: 10px;" @onclick="DecrementPage">-</p>
+            <p style="margin-right: 10px;">@Page</p>
+            <p class="btn btn-sm bg-white" @onclick="IncrementPage">+</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<OrderEntity> OrdersList { get; set; } = new List<OrderEntity>();
+
+    private GetPageRequest PageRequest { get; set; } = new GetPageRequest();
+
+    private int Page { get; set; } = 1;
+
+    private int ItemsPerPage { get; set; } = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetOrders();
+    }
+
+    private async Task GetOrders()
+    {
+        SetupRequest();
+
+        try
+        {
+            if (CfeContext.Identity.Role == Roles.User)
+            {
+                OrdersList = await OrderService.GetByUserAsync(PageRequest);
+                return;
+            }
+
+            OrdersList = await OrderService.GetPageAsync(PageRequest);
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os pedidos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os pedidos");
+        }
+    }
+
+    private void RedirectToOrder(Guid id) => NavManager.NavigateTo($"/orders/{id}");
+
+    private void NewRequest() => PageRequest = new();
+
+    private void SetupRequest()
+    {
+        PageRequest.Page = Page;
+        PageRequest.Items = ItemsPerPage;
+        PageRequest.EstablishmentId = CfeContext.Establishment.Id;
+    }
+
+    private async Task IncrementPage()
+    {
+        if (OrdersList.Count < ItemsPerPage)
+            return;
+
+        Page++;
+
+        await GetOrders();
+    }
+
+    private async Task DecrementPage()
+    {
+        Page--;
+
+        if (Page < 1)
+        {
+            Page = 1;
+            return;
+        }
+
+        await GetOrders();
+    }
+}

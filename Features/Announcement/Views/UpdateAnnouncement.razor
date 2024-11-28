@@ -1,0 +1,84 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Announcement.Update
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IAnnouncementService AnnouncementService
+
+<EditForm Model="Request" OnValidSubmit="Update">
+    <DataAnnotationsValidator></DataAnnotationsValidator>
+
+    <label>Título:</label>
+    <ValidationMessage For="() => Request.Name"></ValidationMessage>
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>Mensagem:</label>
+    <ValidationMessage For="() => Request.Message"></ValidationMessage>
+    <InputTextArea @bind-Value="Request.Message" class="form-control" rows="10"></InputTextArea>
+    <br />
+
+    <label>Destinatários:</label>
+    <div class="d-flex flex-column">
+        <div class="d-flex">
+            <InputCheckbox @bind-Value="Request.Recipients[0]"></InputCheckbox>
+            <label>Proprietário</label>
+        </div>
+        <div class="d-flex">
+            <InputCheckbox @bind-Value="Request.Recipients[1]"></InputCheckbox>
+            <label>Administrador</label>
+        </div>
+        <div class="d-flex">
+            <InputCheckbox @bind-Value="Request.Recipients[2]"></InputCheckbox>
+            <label>Estabelecimento</label>
+        </div>
+        <div class="d-flex">
+            <InputCheckbox @bind-Value="Request.Recipients[3]"></InputCheckbox>
+            <label>Cliente</label>
+        </div>
+    </div>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Atualizar" />
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Cancelar</Button>
+    </div>
+</EditForm>
+
+@code {
+    private UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public AnnouncementEntity Announcement { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Request.Id = Announcement.Id;
+        Request.Name = Announcement.Name;
+        Request.Message = Announcement.Message;
+    }
+
+    private async Task Update()
+    {
+        try
+        {
+            var result = await AnnouncementService.UpdateAsync(Request);
+
+            ToastRaiser.Notifty("Anúncio atualizado");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar o anúncio");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar o anúncio");
+        }
+    }
+
+}

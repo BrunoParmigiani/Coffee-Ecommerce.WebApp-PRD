@@ -1,0 +1,178 @@
+﻿@page "/cart"
+@attribute [Authorize(Roles = "customer")]
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.NewOrder
+@using Coffee_Ecommerce.WebApp.Features.Order
+@using Coffee_Ecommerce.WebApp.Features.Order.Create
+@using Coffee_Ecommerce.WebApp.Features.User
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Hubs
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@inject ICartService CartService
+@inject IConfiguration Config
+@inject ILocalStorageService LocalStorage
+@inject IConfiguration Config
+@inject IUserService UserService
+@inject INewOrderService NewOrderService
+@inject NavigationManager NavManager
+@inject CfeContext CfeContext
+@inject OrdersHub OrdersHub
+<!-- Seeing this many references makes me question my skills -->
+<PageTitle>Carrinho</PageTitle>
+
+<h3>Carrinho</h3>
+<hr />
+<br />
+
+<h4>Seu pedido será enviado para:</h4>
+<h5>Estabelecimento: @CfeContext.Establishment.Name</h5>
+<h5>Endereço: @CfeContext.Establishment.Street, @CfeContext.Establishment.District, @CfeContext.Establishment.Complement - @CfeContext.Establishment.City, @CfeContext.Establishment.State</h5>
+<br />
+
+<div>
+
+    @if (!Items.Any())
+    {
+        <p>Seu carrinho está vazio</p>
+    }
+    else
+    {
+        <div class="w-75">
+            @foreach (var item in Items)
+            {
+                <Card>
+                    <CardHeader Style="background-color: #967259; color: white;">
+                        <h4>@item.Name</h4>
+                    </CardHeader>
+
+                    <CardBody Class="bg-white">
+                        @if (item.Establishment != CfeContext.Establishment.Id)
+                        {
+                            <p class="text-danger">Este item não será enviado, pois o estabelecimento do item é diferente do estabelecimento atual</p>
+                        }
+                        <p>Unidade: R$ @item.Price</p>
+                        <div class="d-flex">
+                            <p style="margin-right: 10px;">Quantidade: @item.Quantity</p>
+
+                            <p class="btn btn-primary btn-sm" style="margin-right: 10px;" @onclick="item.DecrementQuantity">-</p>
+                            <p class="btn btn-primary btn-sm" @onclick="item.IncrementQuantity">+</p>
+                        </div>
+                        <p>Total: R$ @(item.Price * item.Quantity)</p>
+                        <br />
+
+                        <Button Class="btn btn-warning" Style="margin-right: 10px;" @onclick="async () => {await UpdateItem(item);}">Atualizar</Button>
+                        <Button Class="btn btn-danger" @onclick="async () => {await RemoveItem(item);}">Remover do Carrinho</Button>
+                    </CardBody>
+                </Card>
+                <br />
+            }
+
+            <h4 class="form-control" Style="background-color: #967259; color: white;">Total: R$ @(Items.Sum(item => item.Price * item.Quantity))</h4>
+        </div>
+        <br />
+
+        <p class="fst-italic">*O pagamento é feito na entrega</p>
+        <EditForm Model="OrderRequest" OnValidSubmit="SendOrder" FormName="send-order-form" class="col-md-4">
+            <DataAnnotationsValidator />
+
+            <label>Forma de pagamento:</label>
+            <ValidationMessage For="() => OrderRequest.PaymentMethod"></ValidationMessage>
+            <InputSelect @bind-Value="OrderRequest.PaymentMethod" class="form-control">
+                <option value="0">Dinheiro</option>
+                <option value="1">Cartão</option>
+            </InputSelect>
+            <br />
+
+            <div>
+                <input type="submit" class="btn btn-success" value="Fazer pedido" />
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private List<OrderItem> Items { get; set; } = new List<OrderItem>();
+
+    private CreateRequest OrderRequest { get; set; } = new CreateRequest();
+
+    private HubConnection? hubConnection { get; set; } = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetItems();
+        ConnectToHub();
+    }
+
+    private async Task GetItems()
+    {
+        Items = await CartService.GetItems();
+    }
+
+    private void ConnectToHub() => hubConnection = OrdersHub.Connection;
+
+    private async Task SendOrder()
+    {
+        var user = await UserService.GetInfoAsync();
+
+        var itemsToSend = Items.Where(item => item.Establishment == CfeContext.Establishment.Id);
+
+        if (!itemsToSend.Any())
+            return;
+
+        OrderRequest.UserId = CfeContext.Identity.UserId;
+        OrderRequest.EstablishmentId = CfeContext.Establishment.Id;
+        OrderRequest.Items = itemsToSend.ToArray();
+        OrderRequest.UserName = user.Name;
+        OrderRequest.UserAddress = user.GetFormattedAddress();
+        OrderRequest.UserComplement = user.Complement;
+        
+        await NewOrderService.CreateAsync(OrderRequest);
+
+        ToastRaiser.Notifty("Seu pedido foi registrado");
+
+        await CartService.ClearCart();
+        Items.RemoveAll(item => item.Establishment == CfeContext.Establishment.Id);
+
+        if (hubConnection == null)
+        {
+            ErrorRaiser.Raise("Nenhuma conexão com o servidor foi estabelecida");
+            return;
+        }
+
+        await hubConnection.SendAsync("SendOrder", OrderRequest);
+
+        ToastRaiser.Notifty("Seu pedido foi enviado");
+
+        OrderRequest = new CreateRequest();
+    }
+
+    private async Task UpdateItem(OrderItem item)
+    {
+        var result = await CartService.UpdateItem(item);
+
+        if (result)
+        {
+            ToastRaiser.Notifty("Item atualizado");
+        }
+        else
+        {
+            ErrorRaiser.Raise("Não foi possíve atualizar o item do carrinho");
+        }
+    }
+
+    private async Task RemoveItem(OrderItem item)
+    {
+        var result = await CartService.RemoveItem(item);
+
+        if (result)
+        {
+            Items.Remove(item);
+        }
+        else
+        {
+            ErrorRaiser.Raise("Não foi possíve remover o item do carrinho");
+        }
+    }
+}

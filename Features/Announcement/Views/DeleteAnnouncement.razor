@@ -1,0 +1,52 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Announcement
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IAnnouncementService AnnouncementService
+
+<div>
+    <p>Você está prestes a deletar o anúncio <b>@Announcement.Name</b></p>
+    <br />
+
+    <b>Conteúdo:</b>
+    <p>@Announcement.Message</p>
+    <br />
+
+    <p>Esta ação não pode ser desfeita</p>
+    <br />
+
+    <div class="d-flex">
+        <Button Class="btn btn-danger" @onclick="Delete" Style="margin-right: 10px;">Deletar</Button>
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Cancelar</Button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public AnnouncementEntity Announcement { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private async Task Delete()
+    {
+        try
+        {
+            var result = await AnnouncementService.DeleteAsync(Announcement.Id);
+
+            ToastRaiser.Notifty("Anúncio deletado");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível deletar o anúncio");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível deletar o anúncio");
+        }
+    }
+
+}

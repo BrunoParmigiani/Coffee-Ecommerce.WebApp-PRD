@@ -1,0 +1,205 @@
+﻿@page "/products"
+@attribute [Authorize(Roles = "commercial_admin,commercial_place,customer")]
+@using Coffee_Ecommerce.WebApp.Features.Cart
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Favorite
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using System.Security.Claims
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IProductService ProductService
+@inject ICartService CartService
+@inject IFavoriteService FavoriteService
+@inject CfeContext CfeContext
+
+<PageTitle>Catálogo</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div>
+    <h3>Catálogo</h3>
+    <hr />
+    <br />
+
+    <h4>Estabelecimento: @CfeContext.Establishment.Name</h4>
+    <h4>Endereço: @CfeContext.Establishment.Street, @CfeContext.Establishment.District, @CfeContext.Establishment.Complement - @CfeContext.Establishment.City, @CfeContext.Establishment.State</h4>
+    <br />
+
+    @if (ManagementEnabled)
+    {
+        <div>
+            <Button @onclick="ShowCreateModal" Class="btn btn-success">Criar Produto</Button>
+        </div>
+        <br />
+    }
+
+    <div class="w-75">
+        @foreach (var wrapper in ProductsList)
+        {
+            <Card>
+                <CardHeader Style="background-color: #967259; color: white;">
+                    <h4 style="word-wrap: break-word;">@wrapper.Product.Name</h4>
+                </CardHeader>
+
+                <CardBody Class="bg-white">
+                    <p>R$ @wrapper.Product.Price</p>
+                    <p style="word-wrap: break-word;">@wrapper.Product.Description</p>
+                    <br />
+
+                    @if (ManagementEnabled)
+                    {
+                        <div class="d-flex">
+                            <Button Class="btn btn-warning" @onclick="async () => {await ShowUpdateModal(wrapper.Product);}" Style="margin-right: 10px;">Editar</Button>
+                            <Button Class="btn btn-danger" @onclick="async () => {await ShowDeleteModal(wrapper.Product);}">Excluir</Button>
+                        </div>
+                    }
+                    else
+                    {
+                        <p>Quantidade:</p>
+                        <div class="d-flex" style="margin-bottom: 5px;">
+                            <p class="btn btn-primary btn-sm" style="margin-right: 10px;" @onclick="wrapper.DecrementQuantity">-</p>
+                            <p style="margin-right: 10px;">@wrapper.Quantity</p>
+                            <p class="btn btn-primary btn-sm" @onclick="wrapper.IncrementQuantity">+</p>
+                        </div>
+
+                        <div class="d-flex">
+                            <Button Class="btn btn-success" @onclick="async () => {await AddToCart(wrapper.Product, wrapper.Quantity);}" Style="margin-right: 10px;"><Icon Name="IconName.CartFill"></Icon></Button>
+                            <Button Class="btn btn-primary" @onclick="async () => {await AddToFavorite(wrapper.Product.Id);}"><Icon Name="IconName.StarFill"></Icon></Button>
+                        </div>
+                    }
+                </CardBody>
+            </Card>
+            <br />
+        }
+    </div>
+</div>
+
+@code {
+    private Modal modal = default;
+
+    private List<ProductWrapper> ProductsList { get; set; } = new List<ProductWrapper>();
+
+    private bool ManagementEnabled { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SetUserPermissions();
+        await GetProducts();
+    }
+
+    private async Task GetProducts()
+    {
+        try
+        {
+            ProductsList.RemoveAll(_ => true);
+
+            (await ProductService.GetByEstablishmentAsync(CfeContext.Establishment.Id))
+                .ForEach(product =>
+                {
+                    ProductsList.Add(new ProductWrapper(product, 1));
+                });
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os produtos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os produtos");
+        }
+    }
+
+    private async Task SetUserPermissions()
+    {
+        if (CfeContext.Identity.Role == Roles.Administrator || CfeContext.Identity.Role == Roles.Establishment)
+        {
+            ManagementEnabled = true;
+        }
+    }
+
+    private async Task AddToCart(ProductEntity product, int quantity) => await CartService.AddItem(product, quantity);
+
+    private async Task AddToFavorite(Guid productId)
+    {
+        try
+        {
+            await FavoriteService.CreateAsync(productId);
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível adicionar aos favoritos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível adicionar aos favoritos");
+        }
+    }
+
+    private async Task ShowCreateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetProducts();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<CreateForm>(title: $"Criar produto", parameters: parameters);
+    }
+
+    private async Task ShowUpdateModal(ProductEntity product)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Product", product);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await modal.HideAsync()));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetProducts();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateForm>(title: $"Editar produto {product.Name}", parameters: parameters);
+    }
+
+    private async Task ShowDeleteModal(ProductEntity product)
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Product", product);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await modal.HideAsync()));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetProducts();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<DeleteProduct>(title: $"Deletar produto {product.Name}", parameters: parameters);
+    }
+
+    private class ProductWrapper
+    {
+        public ProductEntity Product { get; private set; }
+        public int Quantity { get; private set; }
+
+        public ProductWrapper(ProductEntity product, int quantity)
+        {
+            Product = product;
+            Quantity = quantity;
+        }
+
+        public void IncrementQuantity() => Quantity++;
+
+        public void DecrementQuantity()
+        {
+            Quantity--;
+
+            if (Quantity < 1)
+            {
+                Quantity = 1;
+            }
+        }
+    }
+}

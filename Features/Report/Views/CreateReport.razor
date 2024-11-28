@@ -1,0 +1,92 @@
+﻿@page "/newreport/{orderid:guid}"
+@attribute [Authorize(Roles = "customer")]
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Report.Create
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Hubs
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IReportService ReportService
+@inject NavigationManager NavManager
+@inject ReportsHub ReportsHub
+@inject CfeContext CfeContext
+
+<div>
+    <h3>Registrar Reclamação</h3>
+    <hr />
+    <br />
+
+    <p>Lamentamos qualquer transtorno. Por favor nos informe em detalhes o ocorrido</p>
+    <p>para que possamos te ajudar</p>
+    <br />
+
+    <p>A reclamação será registrada para o pedido @OrderId</p>
+    <br />
+
+    <EditForm Model="Request" OnValidSubmit="Create" class="col-md-8">
+        <DataAnnotationsValidator></DataAnnotationsValidator>
+
+        <label>Problema:</label>
+        <ValidationMessage For="() => Request.Problem"></ValidationMessage>
+        <InputSelect @bind-Value="Request.Problem" class="form-control">
+            @foreach (var kvp in Problems.GetProblems())
+            {
+                <option value="@kvp.Key">@kvp.Value</option>
+            }
+        </InputSelect>
+        <br />
+
+        <label>Descrição</label>
+        <ValidationMessage For="() => Request.Description"></ValidationMessage>
+        <InputTextArea @bind-Value="Request.Description" class="form-control" rows="10"></InputTextArea>
+        <br />
+
+        <div class="d-flex">
+            <input type="submit" style="margin-right: 10px;" class="btn btn-success" value="Enviar"/>
+            <Button Class="btn btn-primary" @onclick="GoBack">Voltar</Button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter]
+    public Guid OrderId { get; set; }
+
+    private CreateRequest Request { get; set; } = new CreateRequest();
+
+    private HubConnection? hubConnection { get; set; } = null;
+
+    protected override void OnParametersSet()
+    {
+        Request.OrderId = OrderId;
+        Request.EstablishmentId = CfeContext.Establishment.Id;
+        ConnectToHubAsync();
+    }
+
+    private async Task Create()
+    {
+        try
+        {
+            var result = await ReportService.CreateAsync(Request);
+
+            await hubConnection.SendAsync("SendNotification", Request.EstablishmentId, result.Id);
+            ToastRaiser.Notifty("Sua reclamação foi registrada");
+
+            GoBack();
+
+            Request = new CreateRequest();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível registrar a reclamação");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível registrar a reclamação");
+        }
+    }
+
+    private void GoBack() => NavManager.NavigateTo($"/orders/{OrderId}");
+
+    private void ConnectToHubAsync() => hubConnection = ReportsHub.Connection;
+}

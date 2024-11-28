@@ -1,0 +1,123 @@
+﻿@attribute [Authorize(Roles = "business_owner,commercial_admin")]
+@using Coffee_Ecommerce.WebApp.Features.Administrator.Update
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IAdministratorService AdminService
+@inject IEstablishmentService EstablishmentService
+@inject CfeContext CfeContext
+
+<EditForm Model="Request" OnValidSubmit="Update" FormName="update-admin-form">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name" />
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>E-mail:</label>
+    <ValidationMessage For="() => Request.Email" />
+    <InputText @bind-Value="Request.Email" class="form-control" placeholder="@("nome@expcafe.com")"></InputText>
+    <br />
+
+    <label>CPF:</label>
+    <ValidationMessage For="() => Request.CPF" />
+    <InputText @bind-Value="Request.CPF" class="form-control"></InputText>
+    <br />
+
+    <label>Telefone:</label>
+    <ValidationMessage For="() => Request.PhoneNumber" />
+    <InputText @bind-Value="Request.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX"></InputText>
+    <br />
+
+    @if (Admin.Role == Roles.Administrator && CfeContext.Identity.Role == Roles.Owner)
+    {
+        <label>Estabelecimento:</label>
+        <ValidationMessage For="() => Request.EstablishmentId"></ValidationMessage>
+        <InputSelect @bind-Value="Request.EstablishmentId" class="form-control">
+            <option value="@Guid.Empty">Nenhum</option>
+            @if (Establishments.Any())
+            {
+                foreach (var establishment in Establishments)
+                {
+                    <option value="@establishment.Id">@establishment.Name</option>
+                }
+            }
+        </InputSelect>
+        <br />
+    }
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Atualizar" />
+        <Button Class="btn-primary" @onclick="CloseCallback">Cancelar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public AdministratorEntity Admin { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private List<EstablishmentEntity> Establishments { get; set; } = new List<EstablishmentEntity>();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Request.Id = Admin.Id;
+        Request.Name = Admin.Name;
+        Request.Email = Admin.Email;
+        Request.CPF = Admin.CPF;
+        Request.PhoneNumber = Admin.PhoneNumber;
+
+        if (Admin.Role == Roles.Administrator && CfeContext.Identity.Role == Roles.Owner)
+        {
+            await GetEstablishments();
+        }
+
+        Request.EstablishmentId = Admin.EstablishmentId;
+    }
+
+    private async Task GetEstablishments()
+    {
+        try
+        {
+            Establishments = await EstablishmentService.GetAllAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os estabelecimentos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os estabelecimentos");
+        }
+    }
+
+    private async Task Update()
+    {
+        try
+        {
+            _ = await AdminService.UpdateAsync(Request);
+
+            ToastRaiser.Notifty("Administrador atualizado");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar o administrador");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar o administrador");
+        }
+    }
+}

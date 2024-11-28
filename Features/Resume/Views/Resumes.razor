@@ -1,0 +1,80 @@
+﻿@page "/resumes"
+@attribute [Authorize(Roles = "business_owner,commercial_admin")]
+@using Coffee_Ecommerce.WebApp.Features.Resume
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IResumeService ResumeService
+
+<div>
+    <h3>Currículos</h3>
+    <hr />
+    <br />
+
+    <div class="d-flex flex-wrap">
+        @foreach (var resume in s3Objects)
+        {
+            <Card>
+                <CardHeader Style="background-color: #967259; color: white;">
+                    @resume.Name!.Replace("/resume.pdf", "")
+                </CardHeader>
+
+                <CardBody Class="d-flex flex-column align-items-center">
+                    <a href="@resume.PresignedUrl" target="_blank" style="margin-bottom: 20px;">
+                        <Icon Name="IconName.FileTypePdf" Size="IconSize.x2" />
+                    </a>
+                    
+                    <Button Class="btn btn-danger" @onclick="async () => await DeleteResume(resume.Name!)">Deletar</Button>
+                </CardBody>
+            </Card>
+        }
+    </div>
+</div>
+
+@code {
+    private List<S3Object> s3Objects { get; set; } = new List<S3Object>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetResumes();
+    }
+
+    private async Task GetResumes()
+    {
+        try
+        {
+            s3Objects = await ResumeService.GetAllAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível buscar os currículos");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível buscar os currículos");
+        }
+    }
+
+    private async Task DeleteResume(string name)
+    {
+        try
+        {
+            Guid id = Guid.Parse(name.Replace("/resume.pdf", ""));
+            var result = await ResumeService.DeleteAsync(id);
+
+            ToastRaiser.Warn("Processando sua solicitação...\nIsso pode demorar um pouco");
+
+            if (result)
+            {
+                s3Objects.RemoveAll(obj => obj.Name!.Contains(name));
+                ToastRaiser.Notifty("O currículo foi deletado");
+            }
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível deletar o currículo");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível deletar o currículo");
+        }
+    }
+}

@@ -1,0 +1,91 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.NewOrder
+@using Coffee_Ecommerce.WebApp.Features.Order.Create
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Hubs
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IOrderService OrderService
+@inject INewOrderService NewOrderService
+@inject OrdersHub OrdersHub
+
+<p>Pedido: @Request.Id</p>
+
+<EditForm Model="Request" OnValidSubmit="SendResponse" FormName="accept-order-form">
+    <DataAnnotationsValidator />
+
+    <label>Unidade de Tempo:</label>
+    <InputSelect class="form-control" @bind-Value="TimeUnit">
+        <option value="60">Minutos</option>
+        <option value="3600">Horas</option>
+    </InputSelect>
+    <br />
+
+    <label>Tempo de entrega:</label>
+    <ValidationMessage For="() => Request.DeliveryTime"></ValidationMessage>
+    <NumberInput Class="form-control" @bind-Value="Request.DeliveryTime"></NumberInput>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Enviar"/>
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter]
+    public CreateRequest ReceivedOrder { get; set; }
+
+    [SupplyParameterFromForm]
+    public CreateRequest Request { get; set; } = new CreateRequest();
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    private int TimeUnit { get; set; } = 60;
+
+    private HubConnection? hubConnection { get; set; } = null;
+
+    protected override void OnParametersSet()
+    {
+        Request.Id = ReceivedOrder.Id;
+        Request.UserId = ReceivedOrder.UserId;
+        Request.PaymentMethod = ReceivedOrder.PaymentMethod;
+        Request.EstablishmentId = ReceivedOrder.EstablishmentId;
+        Request.DeliveryTime = ReceivedOrder.DeliveryTime;
+        Request.Items = ReceivedOrder.Items;
+        Request.DeniedOrder = false;
+        Request.DeniedReason = "";
+
+        hubConnection = OrdersHub.Connection;
+    }
+
+    private async Task SendResponse()
+    {
+        try
+        {
+            Request.DeliveryTime = Request.DeliveryTime * TimeUnit;
+
+            var order = await OrderService.CreateAsync(Request);
+
+            await hubConnection.SendAsync("SendResponse", order.Id, order.UserId, true);
+
+            ToastRaiser.Notifty("Pedido aceito");
+
+            await NewOrderService.DeleteAsync(Request.Id);
+
+            await ConfirmCallback.InvokeAsync();
+
+            Request = new CreateRequest();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível aceitar o pedido");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível aceitar o pedido");
+        }
+    }
+}

@@ -1,0 +1,129 @@
+﻿@page "/resumes/user"
+@attribute [Authorize(Roles = "customer")]
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IResumeService ResumeService
+@inject CfeContext CfeContext
+
+<PageTitle>Currículo</PageTitle>
+
+<div>
+    <h3>Currículo</h3>
+    <hr />
+    <br />
+
+    <p>Deseja trabalhar conosco? Envie seu currículo agora mesmo!</p>
+    <br />
+
+    <div class="col-md-5">
+        <InputFile OnChange="LoadFile" class="form-control"></InputFile>
+        <br />
+
+        <Button Class="btn btn-success" @onclick="UploadFile">Enviar</Button>
+    </div>
+    <br />
+
+    @if (StoredFile is not null)
+    {
+        <div>
+            <p>Verificamos que você já enviou um currículo</p>
+            <p>Mas sinta-se livre para nos enviar outro!</p>
+
+            <div>
+                <Tooltip Title="Deletar currículo" role="button" Placement="TooltipPlacement.Bottom" @onclick="DeleteResume">
+                    <Icon Name="IconName.XSquareFill" Size="IconSize.x2" Color="IconColor.Danger"></Icon>
+                </Tooltip>
+
+                <a href="@StoredFile.PresignedUrl" target="_blank" style="margin-right: 10px;">
+                    <Icon Name="IconName.FileTypePdf" Size="IconSize.x2" />
+                </a>
+            </div>
+        </div>
+    }
+</div>
+
+
+@code {
+    private IBrowserFile? InputFile { get; set; } = null;
+
+    private S3Object? StoredFile { get; set; } = null;
+
+    private void LoadFile(InputFileChangeEventArgs e) => InputFile = e.File;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SearchFile();
+    }
+
+    private async Task UploadFile()
+    {
+        if (InputFile == null)
+        {
+            ErrorRaiser.Raise("Nenhum arquivo foi encontrado");
+        }
+
+        try
+        {
+            ToastRaiser.Warn("Fazendo upload...\nIsso pode demorar um pouco");
+
+            var result = await ResumeService.UploadAsync(InputFile!);
+
+            if (result)
+            {
+                ToastRaiser.Notifty("Arquivo salvo");
+                await SearchFile();
+            }
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível fazer upload do seu currículo");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível fazer upload do seu currículo");
+        }
+        catch (FileLoadException)
+        {
+            ErrorRaiser.Raise("O formato do arquivo não é válido");
+        }
+    }
+
+    private async Task SearchFile()
+    {
+        try
+        {
+            StoredFile = await ResumeService.GetByIdAsync(CfeContext.Identity.UserId);
+        }
+        catch (ApiException ex)
+        {
+        }
+        catch (HttpRequestException ex)
+        {
+        }
+    }
+
+    private async Task DeleteResume()
+    {
+        try
+        {
+            var result = await ResumeService.DeleteAsync(CfeContext.Identity.UserId);
+
+            ToastRaiser.Warn("Processando sua solicitação...\nIsso pode demorar um pouco");
+
+            if (result)
+            {
+                StoredFile = null;
+                ToastRaiser.Notifty("Seu currículo foi deletado");
+            }
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível deletar seu currículo");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível deletar seu currículo");
+        }
+    }
+}

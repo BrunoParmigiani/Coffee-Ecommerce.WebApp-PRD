@@ -1,0 +1,118 @@
+﻿@page "/establishments/profile"
+@attribute [Authorize(Roles = "commercial_place")]
+@using Coffee_Ecommerce.WebApp.Features.Administrator
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IAdministratorService AdminService
+@inject IEstablishmentService EstablishmentService
+
+<PageTitle>Dados da Conta</PageTitle>
+
+<Modal @ref="modal" UseStaticBackdrop="true" />
+
+<div>
+    <h3>Dados da Conta</h3>
+    <hr />
+    <br />
+
+    <div>
+        <form class="col-md-5">
+            <label>Nome:</label>
+            <InputText @bind-Value="Establishment.Name" class="form-control" readonly></InputText>
+            <br />
+
+            <label>E-mail:</label>
+            <InputText @bind-Value="Establishment.Email" class="form-control" placeholder="@("nome@domain.com")" readonly></InputText>
+            <br />
+
+            <label>CEP:</label>
+            <InputText @bind-Value="Establishment.PostalCode" class="form-control" readonly></InputText>
+            <br />
+
+            <label>Endereço:</label>
+            <textarea class="form-control" readonly>
+                @Establishment.Street, @Establishment.District, @Establishment.City - @Establishment.State
+            </textarea>
+            <br />
+
+            <label>Complemento:</label>
+            <InputText @bind-Value="Establishment.Complement" class="form-control" readonly></InputText>
+            <br />
+
+            <label>CNPJ:</label>
+            <InputText @bind-Value="Establishment.CNPJ" class="form-control" readonly></InputText>
+            <br />
+
+            <label>Telefone:</label>
+            <InputText @bind-Value="Establishment.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX" readonly></InputText>
+        </form>
+    </div>
+    <br />
+
+    <div class="d-flex">
+        <Button @onclick="ShowUpdateModal" Class="btn btn-success" style="margin-right: 10px;">Atualizar</Button>
+        <Button @onclick="ShowCredentialsModal" Class="btn btn-warning">Trocar Senha</Button>
+    </div>
+</div>
+
+@code {
+    private Modal modal = default;
+
+    private EstablishmentEntity Establishment { get; set; } = new EstablishmentEntity();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetEstablishment();
+    }
+
+    private async Task ShowUpdateModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Establishment", Establishment);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetEstablishment();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<UpdateForm>(title: "Atualizar dados da conta", parameters: parameters);
+    }
+
+    private async Task ShowCredentialsModal()
+    {
+        var parameters = new Dictionary<string, object>();
+        parameters.Add("Establishment", Establishment);
+        parameters.Add("CloseCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await modal.HideAsync();
+        }));
+        parameters.Add("ConfirmCallback", EventCallback.Factory.Create<MouseEventArgs>(this, async () =>
+        {
+            await GetEstablishment();
+            await modal.HideAsync();
+        }));
+
+        await modal.ShowAsync<PasswordForm>(title: "Trocar senha", parameters: parameters);
+    }
+
+    private async Task GetEstablishment()
+    {
+        try
+        {
+            Establishment = await EstablishmentService.GetInfoAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível recuperar os dados da conta");
+
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível recuperar os dados da conta");
+        }
+    }
+}
+

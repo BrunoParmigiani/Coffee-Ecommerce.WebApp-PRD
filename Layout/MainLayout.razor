@@ -1,0 +1,297 @@
+﻿@inherits LayoutComponentBase
+@inject IAuthenticationService AuthService
+@inject IAdministratorService AdminService
+@inject IEstablishmentService EstablishmentService
+@inject IFooterService FooterService
+@inject ILocatorService LocatorService
+@inject ILocalStorageService LocalStorage
+@inject IJSRuntime JsRuntime
+@inject NavigationManager NavManager
+@inject NavBarContext NavContext
+@inject AuthenticationStateProvider AuthState
+@inject OrdersHub OrdersHub
+@inject ReportsHub ReportsHub
+@inject AnnouncementsHub AnnouncementsHub
+@inject ReceivedOrders ReceivedOrders
+@inject CfeContext CfeContext
+@using Coffee_Ecommerce.WebApp.Features.Administrator
+@using Coffee_Ecommerce.WebApp.Features.Authentication
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Footer
+@using Coffee_Ecommerce.WebApp.Features.Locator
+@using Coffee_Ecommerce.WebApp.Features.Order
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.NavBarContext
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using System.Security.Claims
+@using Coffee_Ecommerce.WebApp.Shared.Hubs
+@using Coffee_Ecommerce.WebApp.Shared.Models
+<!-- What are these references bruh -->
+<div class="bb-page" style="background-color: #ece0d1;">
+
+    <Sidebar @ref="sidebar"
+             Href="/home"
+             IconName="IconName.CupHotFill"
+             Title="Expresso Café"
+             DataProvider="SidebarDataProvider" />
+
+    <main>
+        <div class="bb-top-row px-4 d-flex @(Mobile ? "justify-content-end" : "justify-content-between")">
+            @if (!Mobile)
+            {
+                <Icon Name="IconName.List" role="button" @onclick="ToggleSidebar" />
+            }
+
+            <div>
+                <Tooltip Title="Sair" Placement="TooltipPlacement.Bottom" role="button" Style="margin-right: 10px;" @onclick="Logout">
+                    <Icon Name="IconName.DoorOpenFill" Size="IconSize.x2" />
+                </Tooltip>
+
+                @if (CfeContext.Identity.Role == Roles.User)
+                {
+                    <Tooltip Title="Carrinho" Placement="TooltipPlacement.Bottom" role="button" Style="margin-right: 10px;" @onclick="Cart">
+                        <Icon Name="IconName.CartFill" Size="IconSize.x2" />
+                    </Tooltip>
+                }
+
+                <Tooltip Title="Perfil" role="button" @onclick="Profile">
+                    <Icon Name="IconName.PersonCircle" Placement="TooltipPlacement.Bottom" Size="IconSize.x2" />
+                </Tooltip>
+            </div>
+        </div>
+
+        <article class="content px-4">
+            @if (WebsiteLoaded)
+            {
+                <div class="py-2">@Body</div>
+            }
+            else
+            {
+                <div class="d-flex justify-content-center">
+                    <Spinner Type="SpinnerType.Dots" Size="SpinnerSize.ExtraLarge" Color="SpinnerColor.Dark"></Spinner>
+                </div>
+            }
+        </article>
+
+        <div class="content px-4 position-absolute bottom-0 end-0">
+            <Icon Name="IconName.ChevronDoubleUp" Size="IconSize.x2" role="button" @onclick="ShowOffcanvas"></Icon>
+        </div>
+
+        <Offcanvas @ref="offcanvas" Title="Links" Placement="Placement.Bottom">
+            <BodyTemplate>
+                <div class="d-flex">
+                    @foreach (var page in FooterItems)
+                    {
+                        <ul style="margin-right: 50px;">
+                            @foreach (var item in page)
+                            {
+                                <li><a href="@item.Link" target="_blank">@item.Name</a></li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </BodyTemplate>
+        </Offcanvas>
+    </main>
+</div>
+
+@code {
+    Sidebar sidebar;
+    Offcanvas offcanvas = default!;
+    IEnumerable<NavItem> navItems;
+
+    private List<FooterItemEntity[]> FooterItems { get; set; } = new List<FooterItemEntity[]>();
+
+    private bool Mobile { get; set; } = true;
+
+    private bool WebsiteLoaded { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await CfeContext.Identity.RefreshContext(AuthState);
+        }
+        catch (NullReferenceException)
+        {
+        }
+
+        Mobile = await IsMobile();
+
+        await GetFooterItems();
+        await SetEstablishment();
+
+        string token = await LocalStorage.GetItemAsync<string>("token")!;
+
+        if (token == null)
+            return;
+
+        try
+        {
+            await OrdersHub.ConnectAsync(token);
+            await ReportsHub.ConnectAsync(token);
+            await AnnouncementsHub.ConnectAsync(token);
+        }
+        catch (HttpRequestException)
+        {
+        }
+
+        await ReceivedOrders.LoadLocal();
+        InitializeListeners();
+
+        WebsiteLoaded = true;
+    }
+
+    private async Task<SidebarDataProviderResult> SidebarDataProvider(SidebarDataProviderRequest request)
+    {
+        if (navItems is null)
+            navItems = GetNavItems();
+
+        return await Task.FromResult(request.ApplyTo(navItems));
+    }
+
+    private IEnumerable<NavItem> GetNavItems()
+    {
+        navItems = NavContext.GetItems();
+
+        return navItems;
+    }
+
+    private void ToggleSidebar() => sidebar.ToggleSidebar();
+
+    private async Task ShowOffcanvas() => await offcanvas.ShowAsync();
+
+    private async Task Logout() => await AuthService.LogoutAsync();
+
+    private void Cart() => NavManager.NavigateTo("/cart");
+
+    private void InitializeListeners()
+    {
+        try
+        {
+            if (CfeContext.Identity.Role == Roles.Establishment)
+            {
+                OrdersHub.SetNewOrdersListener();
+                ReportsHub.SetReportNotificationListener();
+            }
+            else if (CfeContext.Identity.Role == Roles.User)
+            {
+                OrdersHub.SetOrderResponseListener();
+            }
+
+            AnnouncementsHub.SetAnnouncementListener();
+        }
+        catch (NullReferenceException)
+        {
+        }
+    }
+
+    private async Task SetEstablishment()
+    {
+        try
+        {
+            if (CfeContext.Identity.Role == Roles.Administrator)
+            {
+                var result = await AdminService.GetInfoAsync();
+                CfeContext.SetEstablishment(await EstablishmentService.GetByIdAsync(result.EstablishmentId));
+            }
+            else if (CfeContext.Identity.Role == Roles.Establishment)
+            {
+                CfeContext.SetEstablishment(await EstablishmentService.GetInfoAsync());
+            }
+            else if (CfeContext.Identity.Role == Roles.User)
+            {
+                var result = await LocatorService.GetNearest();
+                CfeContext.SetEstablishment(result);
+            }
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Falha ao encontrar um de nossos estabelecimentos perto de você");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Falha ao encontrar um de nossos estabelecimentos perto de você");
+        }
+    }
+
+    private void Profile()
+    {
+        switch (CfeContext.Identity.Role)
+        {
+            case "business_owner":
+                NavManager.NavigateTo("/admins/profile");
+                break;
+            case "commercial_admin":
+                NavManager.NavigateTo("/admins/profile");
+                break;
+            case "commercial_place":
+                NavManager.NavigateTo("/establishments/profile");
+                break;
+            case "customer":
+                NavManager.NavigateTo("/users/profile");
+                break;
+            default:
+                NavManager.NavigateTo("/login");
+                break;
+        }
+    }
+
+    private async Task GetFooterItems()
+    {
+        int items = 5;
+
+        try
+        {
+            var result = await FooterService.GetAllAsync();
+
+            for (int i = 0; i <= result.Count % items; i++)
+            {
+                var page = result.Skip(i * items).Take(items);
+                FooterItems.Add(page.ToArray());
+            }
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os itens de rodapé");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os itens de rodapé");
+        }
+    }
+
+    private async Task<bool> IsMobile()
+    {
+        string result = await JsRuntime.InvokeAsync<string>("getUserAgent");
+        return result.Contains("mobile");
+    }
+}
+
+@if (true)
+{
+    <style>
+        :root {
+            --bb-sidebar-width: 270px;
+            --bb-sidebar-collapsed-width: 50px;
+            --bb-sidebar-background-color: rgba(255, 255, 255, 1);
+            --bb-sidebar-top-row-background-color: rgba(56, 34, 15, 1);
+            --bb-sidebar-top-row-border-color: rgb(56,34,15);
+            --bb-sidebar-title-text-color: rgb(255,255,255);
+            --bb-sidebar-brand-icon-color: #FFFFFF;
+            --bb-sidebar-brand-image-width: 24px;
+            --bb-sidebar-brand-image-height: 24px;
+            --bb-sidebar-title-badge-text-color: rgb(255,255,255);
+            --bb-sidebar-title-badge-background-color: rgba(25,135,84,var(--bs-bg-opacity,1));
+            --bb-sidebar-navbar-toggler-icon-color: rgb(0,0,0);
+            --bb-sidebar-navbar-toggler-background-color: rgba(219,193,172,1);
+            --bb-sidebar-content-border-color: rgb(194,192,192);
+            --bb-sidebar-nav-item-text-color: rgba(56,34,15,1);
+            --bb-sidebar-nav-item-text-active-color-rgb: 56,34,15;
+            --bb-sidebar-nav-item-text-hover-color: rgba(var(--bb-sidebar-nav-item-text-active-color-rgb),1);
+            --bb-sidebar-nav-item-text-active-color: rgba(var(--bb-sidebar-nav-item-text-active-color-rgb),1);
+            --bb-sidebar-nav-item-background-hover-color: rgba(var(--bb-sidebar-nav-item-text-active-color-rgb),0.1);
+            --bb-sidebar-nav-item-group-background-color: rgba(var(--bb-sidebar-nav-item-text-active-color-rgb),0.1);
+        }
+    </style>
+}

@@ -1,0 +1,61 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Footer.Update
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IFooterService FooterService
+
+<EditForm Model="Request" OnValidSubmit="Update">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name"></ValidationMessage>
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>Link:</label>
+    <ValidationMessage For="() => Request.Link"></ValidationMessage>
+    <InputText @bind-Value="Request.Link" class="form-control"></InputText>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Atualizar" />
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public FooterItemEntity FooterItem { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        Request.Id = FooterItem.Id;
+        Request.Name = FooterItem.Name;
+        Request.Link = FooterItem.Link;
+    }
+
+    private async Task Update()
+    {
+        try
+        {
+            var result = await FooterService.UpdateAsync(Request);
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar o item");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar o item");
+        }
+    }
+}

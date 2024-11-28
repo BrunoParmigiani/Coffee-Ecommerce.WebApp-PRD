@@ -1,0 +1,182 @@
+﻿@attribute [Authorize(Roles = "business_owner,commercial_admin,commercial_place")]
+@inject IAdministratorService AdminService
+@inject IEstablishmentService EstablishmentService
+@inject IAddressService AddressService
+@inject AuthenticationStateProvider AuthState
+@using Coffee_Ecommerce.WebApp.Features.Administrator
+@using Coffee_Ecommerce.WebApp.Features.Establishment.Update
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Services.Interfaces
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using System.Security.Claims
+@using Coffee_Ecommerce.WebApp.ThirdParty.GoogleCloud.MapsPlatform
+
+<EditForm Model="Request" OnValidSubmit="Update" FormName="update-establishment-form">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name"></ValidationMessage>
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>E-mail:</label>
+    <ValidationMessage For="() => Request.Email"></ValidationMessage>
+    <InputText @bind-Value="Request.Email" class="form-control" placeholder="@("Ex.: nome@expcafe.com")"></InputText>
+    <br />
+
+    <label>CEP:</label>
+    <ValidationMessage For="() => Request.PostalCode"></ValidationMessage>
+    <InputText @bind-Value="Request.PostalCode" class="form-control" placeholder="XXXXX-XXX" @onfocusout="GetAddress"></InputText>
+    <br />
+
+    <label>Endereço:</label>
+    @if (GeocodeResponse != null)
+    {
+        <textarea class="form-control" readonly>@GeocodeResponse.Results[0].FormatedAddress</textarea>
+    }
+    else
+    {
+        <textarea class="form-control" readonly>@Establishment.Street, @Establishment.District, @Establishment.City - @Establishment.State</textarea>
+    }
+    <br />
+
+    <label>Complemento:</label>
+    <ValidationMessage For="() => Request.Complement"></ValidationMessage>
+    <InputText @bind-Value="Request.Complement" class="form-control" placeholder="Ex.: N° casa, apartamento, etc."></InputText>
+    <br />
+
+    <label>CNPJ</label>
+    <ValidationMessage For="() => Request.CNPJ"></ValidationMessage>
+    <InputText @bind-Value="Request.CNPJ" class="form-control"></InputText>
+    <br />
+
+    <label>Telefone:</label>
+    <ValidationMessage For="() => Request.PhoneNumber"></ValidationMessage>
+    <InputText @bind-Value="Request.PhoneNumber" class="form-control" placeholder="(DDD) 9XXXX-XXXX"></InputText>
+    <br />
+
+    @if (CurrentClaim == Roles.Owner)
+    {
+        <label>Administrador:</label>
+        <ValidationMessage For="() => Request.AdministratorId"></ValidationMessage>
+        <InputSelect @bind-Value="Request.AdministratorId" class="form-control">
+            @if (Admins.Any())
+            {
+                foreach (var admin in Admins)
+                {
+                    <option value="@admin.Id">@admin.Name</option>
+                }
+            }
+        </InputSelect>
+        <br />
+    }
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Atualizar" />
+        <Button Class="btn-primary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private UpdateRequest Request { get; set; } = new UpdateRequest();
+
+    [Parameter]
+    public EstablishmentEntity Establishment { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private List<AdministratorEntity> Admins { get; set; } = new List<AdministratorEntity>();
+
+    private string CurrentClaim { get; set; } = default;
+
+    private GeocodeResponse? GeocodeResponse { get; set; } = null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+
+        CurrentClaim = state.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role).Value;
+
+        if (CurrentClaim == Roles.Owner)
+        {
+            await GetAdmins();
+        }
+
+        Request.Id = Establishment.Id;
+        Request.Name = Establishment.Name;
+        Request.Email = Establishment.Email;
+        Request.PostalCode = Establishment.PostalCode;
+        Request.CNPJ = Establishment.CNPJ;
+        Request.PhoneNumber = Establishment.PhoneNumber;
+        Request.AdministratorId = Establishment.AdministratorId;
+        Request.Complement = Establishment.Complement;
+    }
+
+    public async Task Update()
+    {
+        try
+        {
+            _ = await EstablishmentService.UpdateAsync(Request);
+
+            ToastRaiser.Notifty("Estabelecimento atualizado");
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível atualizar o estabelecimento");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível atualizar o estabelecimento");
+        }
+    }
+
+    private async Task GetAddress()
+    {
+        if (Request.PostalCode.Length != 9)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await AddressService.ValidatePostalCode(Request.PostalCode);
+
+            if (response == null)
+                return;
+
+            GeocodeResponse = response;
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível localizar o endereço");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível localizar o endereço");
+        }
+    }
+
+    private async Task GetAdmins()
+    {
+        try
+        {
+            Admins = await AdminService.GetAllAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar os administradores");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar os administradores");
+        }
+    }
+}

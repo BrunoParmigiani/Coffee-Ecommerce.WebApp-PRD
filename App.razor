@@ -1,0 +1,68 @@
+﻿@inject ToastService ToastService
+@inject NavigationManager NavManager
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Microsoft.AspNetCore.Components.Authorization;
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @if (!context.User.Identity.IsAuthenticated)
+                    {
+                        RedirectToLogin();
+                    }
+                    else
+                    {
+                        <p>You're not authorized to access this resource</p>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p role="alert">Sorry, there's nothing at this address.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
+
+<Toasts class="p-3" AutoHide="true" Delay="4000" Placement="ToastsPlacement.BottomRight" />
+
+@code {
+    protected override void OnInitialized()
+    {
+        InitializeNotificationEvents();
+        RedirectToLogin();
+    }
+
+    private void RedirectToLogin()
+    {
+        NavManager.NavigateTo("/login");
+    }
+
+    private void InitializeNotificationEvents()
+    {
+        ErrorRaiser.ErrorHandler += (string message) =>
+        {
+            ToastService.Notify(new(ToastType.Danger, message));
+        };
+
+        ErrorRaiser.ApiErrorHandler += (ApiException ex, string message) =>
+        {
+            ToastService.Notify(new(ToastType.Danger, $"[{(int)ex.StatusCode}] {ex.ReasonPhrase}: {message}"));
+        };
+
+        ToastRaiser.SuccessEvent += (string message) =>
+        {
+            ToastService.Notify(new(ToastType.Success, message));
+        };
+
+        ToastRaiser.WarningEvent += (string message) =>
+        {
+            ToastService.Notify(new(ToastType.Warning, message));
+        };
+    }
+}

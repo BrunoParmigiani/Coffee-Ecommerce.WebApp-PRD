@@ -1,0 +1,168 @@
+﻿@page "/reports"
+@attribute [Authorize(Roles = "commercial_admin,commercial_place,customer")]
+@using Coffee_Ecommerce.WebApp.Features.Establishment
+@using Coffee_Ecommerce.WebApp.Features.Report.GetPage
+@using Coffee_Ecommerce.WebApp.Identity
+@using Coffee_Ecommerce.WebApp.Services
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@using Coffee_Ecommerce.WebApp.Shared.Models
+@inject IReportService ReportService
+@inject NavigationManager NavManager
+@inject CfeContext CfeContext
+
+<PageTitle>Reclamações</PageTitle>
+
+<div>
+    <h3>Reclamações</h3>
+    <hr />
+    <br />
+
+    <EditForm Model="PageParameters">
+        <h5>Filtragem</h5>
+        <br />
+
+        <div class="d-flex">
+            <div style="margin-right: 50px;">
+                <label>Data</label>
+                <DateInput @bind-Value="PageParameters.Date" Class="form-control"></DateInput>
+            </div>
+
+            <div>
+                <label>Status</label>
+                <InputSelect @bind-Value="PageParameters.Status" Class="form-control">
+                    @foreach (var kvp in Statuses.GetStatuses())
+                    {
+                        <option value="@kvp.Key">@kvp.Value</option>
+                    }
+                </InputSelect>
+            </div>
+        </div>
+        <br />
+
+        <h5>Ordenação</h5>
+        <br />
+        <InputSelect @bind-Value="PageParameters.OrderBy" class="form-control">
+            <option value="date_ascending">Data crescente</option>
+            <option value="date_descending">Data decrescente</option>
+        </InputSelect>
+    </EditForm>
+    <br />
+
+    <div class="d-flex justify-content-between">
+        <div class="d-flex">
+            <Button Class="btn btn-success" Style="margin-right: 10px;" @onclick="GetReports">Buscar</Button>
+            <Button Class="btn btn-primary" @onclick="NewRequest">Limpar Filtros</Button>
+        </div>
+
+        <div class="d-flex align-items-center">
+            <p style="margin-right: 10px;">Itens:</p>
+            <InputNumber TValue="int" @bind-Value="ItemsPerPage" class="form-control"></InputNumber>
+        </div>
+    </div>
+    <br />
+
+    <div class="table-responsive d-flex flex-column align-items-center rounded-2 bg-dark" style="color: white;">
+        <table class="table table-hover table-light table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Reclamação</th>
+                    <th>Data</th>
+                    <th>Problema</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var report in ReportsList)
+                {
+                    <tr @onclick="() => {RedirectToReport(report.Id);}">
+                        <td>@StringService.Cut(report.Id.ToString(), 8)</td>
+                        <td>@report.OpenTime</td>
+                        <td>@Problems.GetProblemName(report.Problem)</td>
+                        <td>@Statuses.GetStatusName(report.Status)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <br />
+
+        <div class="d-flex">
+            <p class="btn btn-sm bg-white" style="margin-right: 10px;" @onclick="DecrementPage">-</p>
+            <p style="margin-right: 10px;">@Page</p>
+            <p class="btn btn-sm bg-white" @onclick="IncrementPage">+</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<ReportEntity> ReportsList { get; set; } = new List<ReportEntity>();
+
+    private PageParameters PageParameters { get; set; } = new PageParameters();
+
+    private int Page { get; set; } = 1;
+
+    private int ItemsPerPage { get; set; } = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetReports();
+    }
+
+    private async Task GetReports()
+    {
+        SetupRequest();
+
+        try
+        {
+            if (CfeContext.Identity.Role == Roles.User)
+            {
+                ReportsList = await ReportService.GetByUserAsync(PageParameters);
+                return;
+            }
+
+            ReportsList = await ReportService.GetPageAsync(PageParameters);
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível listar as reclamações");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível listar as reclamações");
+        }
+    }
+
+    private void RedirectToReport(Guid id) => NavManager.NavigateTo($"/reports/{id}");
+
+    private void NewRequest() => PageParameters = new PageParameters();
+
+    private void SetupRequest()
+    {
+        PageParameters.Page = Page;
+        PageParameters.Items = ItemsPerPage;
+        PageParameters.EstablishmentId = CfeContext.Establishment.Id;
+    }
+
+    private async Task IncrementPage()
+    {
+        if (ReportsList.Count < ItemsPerPage)
+            return;
+
+        Page++;
+
+        await GetReports();
+    }
+
+    private async Task DecrementPage()
+    {
+        Page--;
+
+        if (Page < 1)
+        {
+            Page = 1;
+            return;
+        }
+
+        await GetReports();
+    }
+}

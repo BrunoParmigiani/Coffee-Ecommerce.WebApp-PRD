@@ -1,0 +1,53 @@
+﻿@using Coffee_Ecommerce.WebApp.Features.Footer.Create
+@using Coffee_Ecommerce.WebApp.Shared.Events
+@inject IFooterService FooterService
+
+<EditForm Model="Request" OnValidSubmit="Create">
+    <DataAnnotationsValidator />
+
+    <label>Nome:</label>
+    <ValidationMessage For="() => Request.Name"></ValidationMessage>
+    <InputText @bind-Value="Request.Name" class="form-control"></InputText>
+    <br />
+
+    <label>Link:</label>
+    <ValidationMessage For="() => Request.Link"></ValidationMessage>
+    <InputText @bind-Value="Request.Link" class="form-control"></InputText>
+    <br />
+
+    <div class="d-flex">
+        <input type="submit" class="btn btn-success" style="margin-right: 10px;" value="Criar"/>
+        <Button Class="btn btn-secondary" @onclick="CloseCallback">Voltar</Button>
+    </div>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private CreateRequest Request { get; set; } = new CreateRequest();
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> CloseCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<MouseEventArgs> ConfirmCallback { get; set; }
+
+    private async Task Create()
+    {
+        try
+        {
+            var result = await FooterService.CreateAsync(Request);
+
+            Request = new CreateRequest();
+
+            await ConfirmCallback.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            ErrorRaiser.Raise(ex, "Não foi possível criar o item");
+        }
+        catch (HttpRequestException ex)
+        {
+            ErrorRaiser.Raise($"{ex.GetType()}: Não foi possível criar o item");
+        }
+    }
+}
